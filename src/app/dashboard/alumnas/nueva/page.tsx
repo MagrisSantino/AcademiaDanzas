@@ -48,7 +48,7 @@ export default function NuevaAlumnaPage() {
         <h1 className="text-3xl font-black text-brand-dark">Inscribir Alumna</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-brand-pink space-y-6">
+      <form onSubmit={handleSubmit} className="bg-white p-6 md:p-8 rounded-xl shadow-sm border border-brand-pink space-y-6">
         
         <div className="space-y-4">
           <div>
@@ -62,7 +62,7 @@ export default function NuevaAlumnaPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">DNI</label>
               <input 

@@ -69,7 +69,7 @@ export default function EditarAlumnaPage() {
         <h1 className="text-3xl font-black text-brand-dark">Editar Alumna</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-brand-pink space-y-6">
+      <form onSubmit={handleSubmit} className="bg-white p-6 md:p-8 rounded-xl shadow-sm border border-brand-pink space-y-6">
         
         <div className="space-y-4">
           <div>
@@ -82,7 +82,7 @@ export default function EditarAlumnaPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">DNI</label>
               <input 
@@ -113,7 +113,7 @@ export default function EditarAlumnaPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">Fecha de Inicio</label>
               <input 
