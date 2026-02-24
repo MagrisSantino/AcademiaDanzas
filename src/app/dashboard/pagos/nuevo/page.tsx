@@ -17,7 +17,9 @@ function FormularioPago() {
   const [loading, setLoading] = useState(false);
   const [alumnas, setAlumnas] = useState<any[]>([]);
   
-  // Nuevos estados para Danzas y Observaciones
+  // NUEVO: Guardamos el ID del pago si ya existe para actualizarlo
+  const [pagoIdExistente, setPagoIdExistente] = useState<string | null>(null);
+
   const [danzas, setDanzas] = useState<string[]>([]);
   const [observaciones, setObservaciones] = useState("");
   const danzasDisponibles = ["Jazz", "Árabe", "Tap", "Iniciación", "Preparatorio", "Street"];
@@ -35,24 +37,49 @@ function FormularioPago() {
   const mesesActivos = ["Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre"];
 
   useEffect(() => {
-    const fetchAlumnas = async () => {
-      const { data } = await supabase.from("alumnas").select("id, nombre").eq("activa", true).order("nombre");
-      if (data) setAlumnas(data);
+    const fetchDatosIniciales = async () => {
+      // 1. Traer lista de alumnas
+      const { data: alumnasData } = await supabase.from("alumnas").select("id, nombre").eq("activa", true).order("nombre");
+      if (alumnasData) setAlumnas(alumnasData);
+
+      // 2. Si venimos con una alumna y mes seleccionados, buscamos si ya existe un pago
+      if (alumnaUrl && mesUrl && anioUrl) {
+        const { data: pagoExistente } = await supabase
+          .from("pagos")
+          .select("*")
+          .eq("alumna_id", alumnaUrl)
+          .eq("mes", mesUrl)
+          .eq("anio", parseInt(anioUrl))
+          .single(); // Trae 1 solo registro
+
+        if (pagoExistente) {
+          setPagoIdExistente(pagoExistente.id);
+          setFormData({
+            alumna_id: pagoExistente.alumna_id,
+            monto: pagoExistente.monto.toString(),
+            fecha_pago: pagoExistente.fecha_pago,
+            medio_pago: pagoExistente.medio_pago,
+            condicion: pagoExistente.condicion,
+            mes: pagoExistente.mes,
+            anio: pagoExistente.anio.toString(),
+          });
+          setDanzas(pagoExistente.danzas || []);
+          setObservaciones(pagoExistente.observaciones || "");
+        }
+      }
     };
-    fetchAlumnas();
-  }, []);
+    fetchDatosIniciales();
+  }, [alumnaUrl, mesUrl, anioUrl]);
 
   const handleDanzaToggle = (danza: string) => {
-    setDanzas(prev => 
-      prev.includes(danza) ? prev.filter(d => d !== danza) : [...prev, danza]
-    );
+    setDanzas(prev => prev.includes(danza) ? prev.filter(d => d !== danza) : [...prev, danza]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.from("pagos").insert([{
+    const payload = {
       alumna_id: formData.alumna_id,
       monto: parseFloat(formData.monto),
       fecha_pago: formData.fecha_pago,
@@ -60,16 +87,28 @@ function FormularioPago() {
       condicion: formData.condicion,
       mes: formData.mes,
       anio: parseInt(formData.anio),
-      danzas: danzas, // Guardamos las danzas en el pago
-      observaciones: observaciones // Guardamos las notas
-    }]);
+      danzas: danzas,
+      observaciones: observaciones
+    };
+
+    let error;
+
+    if (pagoIdExistente) {
+      // Si ya existía, lo ACTUALIZAMOS (Update)
+      const { error: updateError } = await supabase.from("pagos").update(payload).eq("id", pagoIdExistente);
+      error = updateError;
+    } else {
+      // Si no existía, lo CREAMOS (Insert)
+      const { error: insertError } = await supabase.from("pagos").insert([payload]);
+      error = insertError;
+    }
 
     setLoading(false);
 
     if (!error) {
       router.push("/dashboard/pagos");
     } else {
-      alert("Error al registrar el pago: " + error.message);
+      alert("Error al guardar el pago: " + error.message);
     }
   };
 
@@ -81,7 +120,8 @@ function FormularioPago() {
           required
           value={formData.alumna_id}
           onChange={e => setFormData({...formData, alumna_id: e.target.value})}
-          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-fuchsia outline-none"
+          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-fuchsia outline-none disabled:bg-gray-100"
+          disabled={!!pagoIdExistente} // Si estamos editando, no dejamos cambiar la alumna
         >
           <option value="" disabled>Seleccionar alumna...</option>
           {alumnas.map(a => (
@@ -119,6 +159,7 @@ function FormularioPago() {
             value={formData.mes}
             onChange={e => setFormData({...formData, mes: e.target.value})}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-fuchsia outline-none"
+            disabled={!!pagoIdExistente}
           >
             {mesesActivos.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
@@ -130,6 +171,7 @@ function FormularioPago() {
             value={formData.anio}
             onChange={e => setFormData({...formData, anio: e.target.value})}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-fuchsia outline-none"
+            disabled={!!pagoIdExistente}
           />
         </div>
       </div>
@@ -161,7 +203,6 @@ function FormularioPago() {
         </div>
       </div>
 
-      {/* Selector de Danzas para este mes */}
       <div>
         <label className="block text-sm font-bold text-gray-700 mb-3">Danzas que cursa este mes</label>
         <div className="flex flex-wrap gap-3">
@@ -182,7 +223,6 @@ function FormularioPago() {
         </div>
       </div>
 
-      {/* Campo de Observaciones */}
       <div>
         <label className="block text-sm font-bold text-gray-700 mb-1">Observaciones / Notas (Opcional)</label>
         <input 
@@ -201,7 +241,7 @@ function FormularioPago() {
           className="w-full bg-brand-dark text-brand-light font-bold py-3 rounded-lg hover:bg-gray-800 transition-colors flex justify-center items-center gap-2"
         >
           <Save size={20} />
-          {loading ? 'Guardando...' : 'Guardar Pago'}
+          {loading ? 'Guardando...' : (pagoIdExistente ? 'Actualizar Pago' : 'Guardar Pago')}
         </button>
       </div>
     </form>
@@ -215,9 +255,8 @@ export default function NuevoPagoPage() {
         <Link href="/dashboard/pagos" className="p-2 hover:bg-gray-200 rounded-full transition-colors">
           <ArrowLeft size={24} className="text-gray-600" />
         </Link>
-        <h1 className="text-3xl font-black text-brand-dark">Registrar Pago</h1>
+        <h1 className="text-3xl font-black text-brand-dark">Registrar / Editar Pago</h1>
       </div>
-      
       <Suspense fallback={<div className="text-center p-8">Cargando formulario...</div>}>
         <FormularioPago />
       </Suspense>
