@@ -4,18 +4,43 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRouter, usePathname } from "next/navigation";
 import { Users, DollarSign, LogOut, BarChart3 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [verificando, setVerificando] = useState(true);
+
+  // SEGURIDAD: Verificamos si el usuario está logueado al intentar entrar al dashboard
+  useEffect(() => {
+    const verificarSesion = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/"); // Si no hay sesión, lo pateamos al login
+      } else {
+        setVerificando(false); // Si hay sesión, mostramos el panel
+      }
+    };
+    verificarSesion();
+  }, [router]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/");
   };
 
+  // Mientras verifica, mostramos pantalla de carga para que no "parpadee" el panel
+  if (verificando) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50 text-brand-fuchsia font-bold text-xl">
+        Cargando panel...
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* Aplicamos el color #FFDBF8 solo al menú lateral */}
       <aside className="w-64 bg-[#FFDBF8] text-brand-dark flex flex-col shadow-2xl z-10">
         
         {/* Contenedor del Logo: Sin enlace, pero manteniendo el efecto hover */}
