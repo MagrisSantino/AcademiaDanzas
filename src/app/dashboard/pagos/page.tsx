@@ -2,7 +2,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, CheckCircle, XCircle, Percent, Search } from "lucide-react";
+import { Plus, CheckCircle, XCircle, Percent, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -39,14 +39,11 @@ export default function PagosPage() {
       const combinados = alumnasData
         .filter(alumna => {
           const inicio = new Date(alumna.fecha_inicio);
-          // Solo mostramos si la fecha de inicio es menor o igual al último día del mes consultado
           return inicio <= new Date(parseInt(anioFiltro), mesIndexReal, 31);
         })
         .map(alumna => {
           const pagoEncontrado = pagosData?.find(p => p.alumna_id === alumna.id);
           
-          // Lógica de métricas: Cuenta como "abonado" si pagó 100% o no asistió. 
-          // Parcial o pendiente cuenta como "No abonado" si ya pasó el día 15.
           if (pagoEncontrado && (pagoEncontrado.condicion === 'Pagado' || pagoEncontrado.condicion === 'No asistió')) {
             calcAbonaron++;
           } else if ((!pagoEncontrado || pagoEncontrado?.condicion === 'No pagado' || pagoEncontrado?.condicion === 'Parcial') && hoy > dueDate) {
@@ -59,6 +56,23 @@ export default function PagosPage() {
       setFilas(combinados);
       setAbonaron(calcAbonaron);
       setNoAbonaron(calcNoAbonaron);
+    }
+  };
+
+  // Función para ELIMINAR un pago
+  const handleEliminarPago = async (e: React.MouseEvent, pagoId: string, nombreAlumna: string) => {
+    e.stopPropagation(); // Evita que se active el doble clic de la fila al apretar el botón
+    
+    const confirmar = window.confirm(`¿Estás segura de que querés ELIMINAR el registro de pago de ${nombreAlumna} para este mes?`);
+    
+    if (confirmar) {
+      const { error } = await supabase.from("pagos").delete().eq("id", pagoId);
+      
+      if (error) {
+        alert("Error al eliminar el pago: " + error.message);
+      } else {
+        fetchDatos(); // Recargamos los datos para que desaparezca
+      }
     }
   };
 
@@ -87,7 +101,6 @@ export default function PagosPage() {
         </Link>
       </div>
 
-      {/* Cards de Métricas Estilo Moderno */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-xl border border-brand-pink shadow-sm flex items-center gap-4">
           <div className="p-3 bg-green-100 text-green-600 rounded-full"><CheckCircle size={24}/></div>
@@ -103,7 +116,6 @@ export default function PagosPage() {
         </div>
       </div>
 
-      {/* Filtros y Buscador */}
       <div className="bg-white p-4 rounded-xl border border-brand-pink shadow-sm flex gap-4 items-end">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
@@ -121,12 +133,12 @@ export default function PagosPage() {
         <input type="number" value={anioFiltro} onChange={e => setAnioFiltro(e.target.value)} className="p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia w-24"/>
       </div>
 
-      {/* Tabla con Estética Original */}
       <div className="bg-white rounded-xl border border-brand-pink shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-brand-pink/30 text-brand-dark border-b border-brand-pink">
+                <th className="p-4 font-bold w-16">Acciones</th>
                 <th className="p-4 font-bold">Alumna</th>
                 <th className="p-4 font-bold">Danzas</th>
                 <th className="p-4 font-bold">Estado</th>
@@ -137,7 +149,7 @@ export default function PagosPage() {
             <tbody>
               {filasFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-500">No hay alumnas registradas para este periodo.</td>
+                  <td colSpan={6} className="p-8 text-center text-gray-500">No hay alumnas registradas para este periodo.</td>
                 </tr>
               ) : (
                 filasFiltradas.map(f => {
@@ -147,8 +159,21 @@ export default function PagosPage() {
                       key={f.alumna.id} 
                       onDoubleClick={() => router.push(`/dashboard/pagos/nuevo?alumna_id=${f.alumna.id}&mes=${mesFiltro}&anio=${anioFiltro}`)} 
                       className={`border-b cursor-pointer transition-colors ${getRowStyle(f.pago)}`}
-                      title={f.pago?.observaciones ? `Nota: ${f.pago.observaciones}` : "Doble clic para cobrar"}
+                      title={f.pago?.observaciones ? `Nota: ${f.pago.observaciones}` : "Doble clic para cobrar/editar"}
                     >
+                      <td className="p-4">
+                        {f.pago ? (
+                          <button 
+                            onClick={(e) => handleEliminarPago(e, f.pago.id, f.alumna.nombre)}
+                            title="Eliminar este pago"
+                            className="text-red-400 hover:text-red-700 transition-colors p-1 rounded-md hover:bg-red-50"
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                        ) : (
+                          <span className="text-gray-300 ml-2">-</span>
+                        )}
+                      </td>
                       <td className="p-4 font-bold">{f.alumna.nombre}</td>
                       <td className="p-4 text-sm opacity-80">{f.pago?.danzas?.join(", ") || "-"}</td>
                       <td className="p-4 font-bold text-sm uppercase">{f.pago ? f.pago.condicion : "Pendiente"}</td>
