@@ -49,6 +49,8 @@ export default function AlumnasPage() {
               <tr className="bg-brand-pink/30 text-brand-dark border-b border-brand-pink font-bold">
                 <th className="p-4">Acciones</th>
                 <th className="p-4">Nombre</th>
+                <th className="p-4">DNI</th>
+                <th className="p-4">Dirección</th>
                 <th className="p-4">Teléfono</th>
                 <th className="p-4">Inicio</th>
                 <th className="p-4">Estado</th>
@@ -62,6 +64,8 @@ export default function AlumnasPage() {
                     <button onClick={() => handleEliminar(a.id, a.nombre)} className="text-red-400 hover:text-red-600"><Trash2 size={20} /></button>
                   </td>
                   <td className="p-4 font-bold text-brand-dark">{a.nombre}</td>
+                  <td className="p-4 text-gray-600 text-sm">{a.dni || "-"}</td>
+                  <td className="p-4 text-gray-600 text-sm">{a.direccion || "-"}</td>
                   <td className="p-4 text-gray-600 text-sm">{a.telefono || "-"}</td>
                   <td className="p-4 text-gray-600 text-sm">{new Date(a.fecha_inicio).toLocaleDateString("es-AR", { timeZone: "UTC" })}</td>
                   <td className="p-4">
