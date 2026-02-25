@@ -21,13 +21,12 @@ function FormularioPago() {
   const [observaciones, setObservaciones] = useState("");
   const danzasDisponibles = ["Jazz", "Árabe", "Tap", "Iniciación", "Preparatorio", "Street"];
   
-  // Estado para manejar la nueva entrega rápida
   const [nuevaEntrega, setNuevaEntrega] = useState("");
 
   const [formData, setFormData] = useState({
     alumna_id: alumnaUrl,
-    monto: "", // Lo que paga hoy o lo acumulado
-    monto_total_cuota: "", // Lo que vale la cuota total
+    monto: "", 
+    monto_total_cuota: "", 
     fecha_pago: new Date().toISOString().split('T')[0],
     medio_pago: "Efectivo",
     condicion: "Pagado",
@@ -64,7 +63,6 @@ function FormularioPago() {
 
   const saldo = (parseFloat(formData.monto_total_cuota) || 0) - (parseFloat(formData.monto) || 0);
 
-  // --- NUEVAS FUNCIONES DE PAGOS PARCIALES ---
   const handleSumarEntrega = () => {
     const montoActual = parseFloat(formData.monto) || 0;
     const entrega = parseFloat(nuevaEntrega) || 0;
@@ -72,9 +70,8 @@ function FormularioPago() {
     if (entrega > 0) {
       const nuevoMonto = montoActual + entrega;
       setFormData({ ...formData, monto: nuevoMonto.toString() });
-      setNuevaEntrega(""); // Limpiamos el input
+      setNuevaEntrega(""); 
       
-      // Agregamos al historial de observaciones automáticamente
       const fechaHoy = new Date().toLocaleDateString('es-AR');
       const notaAgergada = observaciones 
         ? `${observaciones}\n[${fechaHoy}] Nueva entrega: $${entrega}` 
@@ -88,7 +85,7 @@ function FormularioPago() {
     setFormData({ 
       ...formData, 
       monto: formData.monto_total_cuota, 
-      condicion: "Pagado" // Al pasar a pagado desaparece el panel naranja automáticamente
+      condicion: "Pagado" 
     });
     
     const fechaHoy = new Date().toLocaleDateString('es-AR');
@@ -97,17 +94,19 @@ function FormularioPago() {
       : `[${fechaHoy}] Pago completado (entregó los $${saldoRestante} restantes)`;
     setObservaciones(notaAgergada);
   };
-  // -------------------------------------------
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const mTotal = formData.condicion === "Pagado" ? parseFloat(formData.monto) : parseFloat(formData.monto_total_cuota || "0");
+    // Si no asistió, guardamos todo en $0 para no afectar estadísticas
+    const isNoAsistio = formData.condicion === "No asistió";
+    const montoFinal = isNoAsistio ? 0 : (parseFloat(formData.monto) || 0);
+    const mTotal = isNoAsistio ? 0 : (formData.condicion === "Pagado" ? montoFinal : parseFloat(formData.monto_total_cuota || "0"));
 
     const payload = {
       alumna_id: formData.alumna_id,
-      monto: parseFloat(formData.monto),
+      monto: montoFinal,
       monto_total_cuota: mTotal,
       fecha_pago: formData.fecha_pago,
       medio_pago: formData.medio_pago,
@@ -137,7 +136,7 @@ function FormularioPago() {
         </select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 ${formData.condicion !== 'No asistió' ? 'md:grid-cols-2' : ''} gap-4`}>
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-1">Condición</label>
           <select value={formData.condicion} onChange={e => setFormData({...formData, condicion: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia">
@@ -147,15 +146,18 @@ function FormularioPago() {
             <option value="No asistió">No asistió</option>
           </select>
         </div>
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            {formData.condicion === "Parcial" && pagoIdExistente ? 'Total abonado hasta ahora ($)' : 'Monto que entrega hoy ($)'}
-          </label>
-          <input type="number" value={formData.monto} onChange={e => setFormData({...formData, monto: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia" />
-        </div>
+        
+        {/* Solo mostramos el input de monto si la condición NO es "No asistió" */}
+        {formData.condicion !== "No asistió" && (
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-1">
+              {formData.condicion === "Parcial" && pagoIdExistente ? 'Total abonado hasta ahora ($)' : 'Monto que entrega hoy ($)'}
+            </label>
+            <input type="number" value={formData.monto} onChange={e => setFormData({...formData, monto: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia" />
+          </div>
+        )}
       </div>
 
-      {/* PANEL DE PAGO PARCIAL ACTUALIZADO */}
       {formData.condicion === "Parcial" && (
         <div className="p-4 md:p-5 bg-yellow-50 rounded-lg border border-yellow-200">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

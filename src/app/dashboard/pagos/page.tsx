@@ -23,19 +23,32 @@ export default function PagosPage() {
   const fetchDatos = async () => {
     const { data: aData } = await supabase.from("alumnas").select("*").eq("activa", true).order("nombre");
     const { data: pData } = await supabase.from("pagos").select("*").eq("mes", mesFiltro).eq("anio", parseInt(anioFiltro));
+    
     if (aData) {
-      let calcAbonaron = 0; let calcNoAbonaron = 0;
+      let calcAbonaron = 0; 
+      let calcNoAbonaron = 0;
       const mesIdx = mesesReales.indexOf(mesFiltro);
       const hoy = new Date();
       const dueDate = new Date(parseInt(anioFiltro), mesIdx, 15, 23, 59, 59);
 
       const combinados = aData.filter(a => new Date(a.fecha_inicio) <= new Date(parseInt(anioFiltro), mesIdx, 31)).map(a => {
         const p = pData?.find(p => p.alumna_id === a.id);
-        if (p && (p.condicion === 'Pagado' || p.condicion === 'No asistió')) calcAbonaron++;
-        else if ((!p || p?.condicion === 'No pagado' || p?.condicion === 'Parcial') && hoy > dueDate) calcNoAbonaron++;
+        
+        // "No asistió" ya no suma a abonaron ni a noAbonaron, queda neutral para el porcentaje
+        if (p && p.condicion === 'Pagado') {
+          calcAbonaron++;
+        } else if (p && p.condicion === 'No asistió') {
+          // No hace nada, se la excluye de las métricas de deudores y pagadores
+        } else if ((!p || p?.condicion === 'No pagado' || p?.condicion === 'Parcial') && hoy > dueDate) {
+          calcNoAbonaron++;
+        }
+        
         return { alumna: a, pago: p || null };
       });
-      setFilas(combinados); setAbonaron(calcAbonaron); setNoAbonaron(calcNoAbonaron);
+      
+      setFilas(combinados); 
+      setAbonaron(calcAbonaron); 
+      setNoAbonaron(calcNoAbonaron);
     }
   };
 
@@ -49,6 +62,8 @@ export default function PagosPage() {
   };
 
   const filasFiltradas = filas.filter(f => f.alumna.nombre.toLowerCase().includes(busqueda.toLowerCase()));
+  
+  // Como "No asistió" no está en ninguna de las dos variables, el totalMes base de cálculo es menor.
   const totalMes = abonaron + noAbonaron;
   const porcentaje = totalMes > 0 ? Math.round((abonaron / totalMes) * 100) : 0;
 
@@ -119,6 +134,9 @@ export default function PagosPage() {
               ) : (
                 filasFiltradas.map(f => {
                   const saldo = (f.pago?.monto_total_cuota || 0) - (f.pago?.monto || 0);
+                  // Si no asistió no se muestra un guion "-"
+                  const displayMonto = (f.pago?.condicion === 'No asistió') ? '-' : (f.pago ? `$${f.pago.monto}` : "-");
+                  
                   return (
                     <tr key={f.alumna.id} onDoubleClick={() => router.push(`/dashboard/pagos/nuevo?alumna_id=${f.alumna.id}&mes=${mesFiltro}&anio=${anioFiltro}`)} className={`border-b cursor-pointer transition-colors ${getRowStyle(f.pago)}`}>
                       <td className="p-4">
@@ -127,7 +145,7 @@ export default function PagosPage() {
                       <td className="p-4 font-bold">{f.alumna.nombre}</td>
                       <td className="p-4 text-sm opacity-80">{f.pago?.danzas?.join(", ") || "-"}</td>
                       <td className="p-4 font-bold text-xs uppercase">{f.pago ? f.pago.condicion : "Pendiente"}</td>
-                      <td className="p-4 font-black">{f.pago ? `$${f.pago.monto}` : "-"}</td>
+                      <td className="p-4 font-black">{displayMonto}</td>
                       <td className="p-4 font-black text-red-600">{saldo > 0 ? `$${saldo}` : "-"}</td>
                     </tr>
                   )
