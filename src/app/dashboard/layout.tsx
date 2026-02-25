@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRouter, usePathname } from "next/navigation";
-import { Users, DollarSign, LogOut, BarChart3, Menu, X, UsersRound, ClipboardCheck } from "lucide-react";
+import { Users, DollarSign, LogOut, BarChart3, Menu, X, UsersRound, ClipboardCheck, Shirt } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -48,7 +48,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/dashboard/alumnas" onClick={() => setMenuAbierto(false)} className={`flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${pathname.includes('/alumnas') ? 'bg-brand-dark text-brand-fuchsia scale-105 shadow-lg' : 'hover:bg-black/10'}`}>
             <Users size={20} /> Gestión Alumnas
           </Link>
-          
+
+          <Link href="/dashboard/pagos" onClick={() => setMenuAbierto(false)} className={`flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${pathname.includes('/pagos') ? 'bg-brand-dark text-brand-fuchsia scale-105 shadow-lg' : 'hover:bg-black/10'}`}>
+            <DollarSign size={20} /> Control de Pagos
+          </Link>
+
           <Link href="/dashboard/grupos" onClick={() => setMenuAbierto(false)} className={`flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${pathname.includes('/grupos') ? 'bg-brand-dark text-brand-fuchsia scale-105 shadow-lg' : 'hover:bg-black/10'}`}>
             <UsersRound size={20} /> Grupos de Danza
           </Link>
@@ -58,8 +62,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <ClipboardCheck size={20} /> Asistencia
           </Link>
 
-          <Link href="/dashboard/pagos" onClick={() => setMenuAbierto(false)} className={`flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${pathname.includes('/pagos') ? 'bg-brand-dark text-brand-fuchsia scale-105 shadow-lg' : 'hover:bg-black/10'}`}>
-            <DollarSign size={20} /> Control de Pagos
+          <Link href="/dashboard/vestuarios" onClick={() => setMenuAbierto(false)} className={`flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${pathname.includes('/vestuarios') ? 'bg-brand-dark text-brand-fuchsia scale-105 shadow-lg' : 'hover:bg-black/10'}`}>
+            <Shirt size={20} /> Vestuarios
           </Link>
           
           <Link href="/dashboard/estadisticas" onClick={() => setMenuAbierto(false)} className={`flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${pathname.includes('/estadisticas') ? 'bg-brand-dark text-brand-fuchsia scale-105 shadow-lg' : 'hover:bg-black/10'}`}>
