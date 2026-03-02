@@ -48,7 +48,7 @@ function FormularioPago() {
             monto: pExist.monto.toString(),
             monto_total_cuota: pExist.monto_total_cuota?.toString() || pExist.monto.toString(),
             fecha_pago: pExist.fecha_pago,
-            medio_pago: pExist.medio_pago,
+            medio_pago: pExist.medio_pago || "Efectivo",
             condicion: pExist.condicion,
             mes: pExist.mes,
             anio: pExist.anio.toString(),
@@ -74,8 +74,8 @@ function FormularioPago() {
       
       const fechaHoy = new Date().toLocaleDateString('es-AR');
       const notaAgergada = observaciones 
-        ? `${observaciones}\n[${fechaHoy}] Nueva entrega: $${entrega}` 
-        : `[${fechaHoy}] Nueva entrega: $${entrega}`;
+        ? `${observaciones}\n[${fechaHoy}] Nueva entrega: $${entrega} (${formData.medio_pago})` 
+        : `[${fechaHoy}] Nueva entrega: $${entrega} (${formData.medio_pago})`;
       setObservaciones(notaAgergada);
     }
   };
@@ -90,8 +90,8 @@ function FormularioPago() {
     
     const fechaHoy = new Date().toLocaleDateString('es-AR');
     const notaAgergada = observaciones 
-      ? `${observaciones}\n[${fechaHoy}] Pago completado (entregó los $${saldoRestante} restantes)` 
-      : `[${fechaHoy}] Pago completado (entregó los $${saldoRestante} restantes)`;
+      ? `${observaciones}\n[${fechaHoy}] Pago completado (entregó los $${saldoRestante} restantes en ${formData.medio_pago})` 
+      : `[${fechaHoy}] Pago completado (entregó los $${saldoRestante} restantes en ${formData.medio_pago})`;
     setObservaciones(notaAgergada);
   };
 
@@ -99,7 +99,6 @@ function FormularioPago() {
     e.preventDefault();
     setLoading(true);
 
-    // Si no asistió, guardamos todo en $0 para no afectar estadísticas
     const isNoAsistio = formData.condicion === "No asistió";
     const montoFinal = isNoAsistio ? 0 : (parseFloat(formData.monto) || 0);
     const mTotal = isNoAsistio ? 0 : (formData.condicion === "Pagado" ? montoFinal : parseFloat(formData.monto_total_cuota || "0"));
@@ -136,7 +135,7 @@ function FormularioPago() {
         </select>
       </div>
 
-      <div className={`grid grid-cols-1 ${formData.condicion !== 'No asistió' ? 'md:grid-cols-2' : ''} gap-4`}>
+      <div className={`grid grid-cols-1 md:grid-cols-2 gap-4`}>
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-1">Condición</label>
           <select value={formData.condicion} onChange={e => setFormData({...formData, condicion: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia">
@@ -147,13 +146,23 @@ function FormularioPago() {
           </select>
         </div>
         
-        {/* Solo mostramos el input de monto si la condición NO es "No asistió" */}
         {formData.condicion !== "No asistió" && (
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-1">
               {formData.condicion === "Parcial" && pagoIdExistente ? 'Total abonado hasta ahora ($)' : 'Monto que entrega hoy ($)'}
             </label>
             <input type="number" value={formData.monto} onChange={e => setFormData({...formData, monto: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia" />
+          </div>
+        )}
+
+        {/* SELECTOR DE MEDIO DE PAGO */}
+        {formData.condicion !== "No asistió" && formData.condicion !== "No pagado" && (
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold text-gray-700 mb-1">Medio de Pago</label>
+            <select value={formData.medio_pago} onChange={e => setFormData({...formData, medio_pago: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia">
+              <option value="Efectivo">Efectivo</option>
+              <option value="Transferencia">Transferencia</option>
+            </select>
           </div>
         )}
       </div>
