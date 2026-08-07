@@ -98,24 +98,40 @@ export default function DetalleVestuarioPage() {
   };
 
   const handleEliminarVestuario = async () => {
-    // No se puede borrar un vestuario con cobros: se perdería el registro de la plata.
-    const { count, error: errorConteo } = await supabase
+    // Lo que no se puede perder es plata cobrada, no los registros en sí:
+    // un cobro en $0 no representa nada y no tiene por qué frenar el borrado.
+    const { data: pagos, error: errorConsulta } = await supabase
       .from("pagos_vestuarios")
-      .select("id", { count: "exact", head: true })
+      .select("id, monto")
       .eq("vestuario_id", vestuarioId);
 
-    if (errorConteo) {
+    if (errorConsulta) {
       alert("No se pudo verificar si tiene cobros, así que no se borró nada.\n\nProbá de nuevo en un momento.");
       return;
     }
 
-    if (count && count > 0) {
-      alert(`"${vestuario.nombre}" tiene ${count} cobro(s) registrados.\n\nNo se puede eliminar porque se perdería el registro de esa plata.\n\nSi el vestuario ya no va, podés dejarlo como está o excluir a todas las alumnas.`);
+    const registros = pagos || [];
+    const totalCobrado = registros.reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
+
+    if (totalCobrado > 0) {
+      const conPlata = registros.filter(p => (Number(p.monto) || 0) > 0).length;
+      alert(`"${vestuario.nombre}" tiene $${totalCobrado.toLocaleString('es-AR')} cobrados entre ${conPlata} alumna(s).\n\nNo se puede eliminar porque se perdería el registro de esa plata.\n\nSi fue un error de carga, poné esos cobros en $0 y después vas a poder borrarlo.`);
       return;
     }
 
-    const confirmar = window.confirm(`¿Eliminar el vestuario "${vestuario.nombre}"?\n\nNo tiene ningún cobro registrado, así que no se pierde plata.\n\nEsta acción no se puede deshacer.`);
+    const aviso = registros.length > 0
+      ? `\n\nTiene ${registros.length} registro(s) de cobro en $0, que se borran junto con el vestuario. No hay plata cobrada.`
+      : `\n\nNo tiene ningún cobro registrado.`;
+
+    const confirmar = window.confirm(`¿Eliminar el vestuario "${vestuario.nombre}"?${aviso}\n\nEsta acción no se puede deshacer.`);
     if (!confirmar) return;
+
+    // Primero los cobros en $0: la tabla no tiene FK, así que si no los
+    // borramos acá quedan huérfanos y no los ve nadie nunca más.
+    if (registros.length > 0) {
+      const { error: errorPagos } = await supabase.from("pagos_vestuarios").delete().eq("vestuario_id", vestuarioId);
+      if (errorPagos) { alert("Error al limpiar los cobros en $0: " + errorPagos.message + "\n\nNo se borró el vestuario."); return; }
+    }
 
     const { error } = await supabase.from("vestuarios").delete().eq("id", vestuarioId);
     if (error) { alert("Error: " + error.message); return; }
