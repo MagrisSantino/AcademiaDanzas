@@ -21,7 +21,9 @@ export default function VestuariosPage() {
   const fetchData = async () => {
     setLoadingDatos(true);
     const { data: gData } = await supabase.from("grupos").select("*").order("nombre");
-    const { data: aData } = await supabase.from("alumnas").select("*").eq("activa", true).order("nombre");
+    // Traemos todas las alumnas, no solo las activas: si una se da de baja
+    // debiendo un traje, su saldo tiene que seguir a la vista.
+    const { data: aData } = await supabase.from("alumnas").select("*").order("nombre");
     const { data: vData } = await supabase.from("vestuarios").select("*");
     const { data: pData } = await supabase.from("pagos_vestuarios").select("*");
 
@@ -31,18 +33,33 @@ export default function VestuariosPage() {
       const cuentasCalculadas = aData.map(alumna => {
         // Encontrar grupos de esta alumna
         const misGrupos = gData.filter(g => g.alumnas_ids?.includes(alumna.id));
-        // Encontrar vestuarios de esos grupos
-        const misVestuarios = vData.filter(v => misGrupos.some(g => g.id === v.grupo_id));
+
+        const tienePagoEn = (vestuarioId: string) =>
+          pData?.some(p => p.vestuario_id === vestuarioId && p.alumna_id === alumna.id) ?? false;
+
+        const misVestuarios = vData.filter(v => {
+          // Excluida de la coreo: no le corresponde pagar ese traje. Pero si ya
+          // le habían cobrado algo, lo seguimos mostrando para que esa plata no
+          // desaparezca de la cuenta.
+          if ((v.excluidas_ids || []).includes(alumna.id)) return tienePagoEn(v.id);
+          // Vestuario de alguno de sus grupos
+          if (misGrupos.some(g => g.id === v.grupo_id)) return true;
+          // O bien ya le cobraron ese traje aunque la hayan sacado del grupo
+          return tienePagoEn(v.id);
+        });
 
         let totalCosto = 0;
         let totalAbonado = 0;
         let detalles: any[] = [];
 
         misVestuarios.forEach(v => {
-          const grupo = misGrupos.find(g => g.id === v.grupo_id);
+          const grupo = misGrupos.find(g => g.id === v.grupo_id) || gData.find(g => g.id === v.grupo_id);
           const pago = pData?.find(p => p.vestuario_id === v.id && p.alumna_id === alumna.id);
-          const costo = Number(v.monto);
           const abonado = pago ? Number(pago.monto) : 0;
+          const excluida = (v.excluidas_ids || []).includes(alumna.id);
+          // A una excluida que ya pagó no le generamos deuda nueva: el traje
+          // figura por lo que abonó y queda saldado.
+          const costo = excluida ? abonado : Number(v.monto);
           const saldo = costo - abonado;
 
           totalCosto += costo;
@@ -60,7 +77,11 @@ export default function VestuariosPage() {
         const nombresTrajes = misVestuarios.map(v => v.nombre).join(", ");
 
         return { alumna, totalCosto, totalAbonado, saldoTotal, condicion, detalles, nombresTrajes };
-      }).filter(c => c.detalles.length > 0); // Filtramos para mostrar solo a las nenas que tienen vestuarios asignados
+      })
+      // Solo las que tienen vestuarios asignados. A las dadas de baja las
+      // mostramos únicamente si tienen movimiento (pagaron o quedaron debiendo).
+      .filter(c => c.detalles.length > 0)
+      .filter(c => c.alumna.activa || c.detalles.some(d => d.pago));
 
       setCuentas(cuentasCalculadas);
     }
@@ -180,7 +201,10 @@ export default function VestuariosPage() {
                             className={`border-b cursor-pointer transition-colors ${getRowStyle(c.condicion)}`}
                             title="Tocar para ver desglose y cobrar"
                           >
-                            <td className="p-4 font-black">{c.alumna.nombre}</td>
+                            <td className="p-4 font-black">
+                              {c.alumna.nombre}
+                              {!c.alumna.activa && <span className="ml-2 px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-gray-200 text-gray-600 align-middle">Baja</span>}
+                            </td>
                             <td className="p-4 text-sm opacity-80">{c.detalles.length} trajes <span className="text-xs">({c.nombresTrajes})</span></td>
                             <td className="p-4 font-bold text-xs uppercase">{c.condicion}</td>
                             <td className="p-4 font-bold">${c.totalCosto.toLocaleString('es-AR')}</td>
@@ -241,7 +265,7 @@ export default function VestuariosPage() {
                   {alumnaSeleccionada.detalles.map((d: any, i: number) => (
                     <div key={i} className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                       <div>
-                        <p className="font-black text-brand-dark text-lg">{d.vestuario.nombre} <span className="text-sm font-bold text-gray-500 ml-2">({d.grupo.nombre})</span></p>
+                        <p className="font-black text-brand-dark text-lg">{d.vestuario.nombre} <span className="text-sm font-bold text-gray-500 ml-2">({d.grupo?.nombre || 'sin grupo'})</span></p>
                         <p className="text-sm text-gray-600 mt-1 font-medium">Costo: ${d.costo.toLocaleString('es-AR')} | Abonado hasta hoy: ${d.abonado.toLocaleString('es-AR')}</p>
                       </div>
                       <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">

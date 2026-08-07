@@ -73,7 +73,10 @@ export default function GrupoVestuariosPage() {
               <div className="bg-brand-pink/30 p-3 rounded-full text-brand-fuchsia"><Shirt size={24}/></div>
               <div>
                 <h3 className="font-black text-brand-dark text-lg group-hover:text-brand-fuchsia transition-colors">{v.nombre}</h3>
-                <p className="text-sm font-bold text-gray-500">Costo total: ${v.monto.toLocaleString('es-AR')}</p>
+                <p className="text-sm font-bold text-gray-500">
+                  Costo por alumna: ${Number(v.monto).toLocaleString('es-AR')}
+                  {(v.excluidas_ids?.length > 0) && <span className="ml-2 text-brand-fuchsia">· {v.excluidas_ids.length} no bailan</span>}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2 text-brand-dark font-bold text-sm">
