@@ -41,29 +41,31 @@ export default function EstadisticasPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-        <div className="bg-white p-6 md:p-8 rounded-2xl border-l-8 border-green-500 shadow-sm">
+      {/* 3 columnas recién en lg: en iPad vertical el menú lateral deja poco
+          ancho y los importes largos no entran */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        <div className="bg-white p-5 lg:p-8 rounded-2xl border-l-8 border-green-500 shadow-sm">
           <div className="flex justify-between items-start mb-2 md:mb-4">
             <p className="font-bold text-gray-500 text-sm md:text-base">EFECTIVO</p>
             <Wallet className="text-green-500" />
           </div>
-          <p className="text-2xl md:text-3xl font-black text-brand-dark">${stats.efectivo.toLocaleString('es-AR')}</p>
+          <p className="text-2xl lg:text-3xl font-black text-brand-dark break-all">${stats.efectivo.toLocaleString('es-AR')}</p>
         </div>
 
-        <div className="bg-white p-6 md:p-8 rounded-2xl border-l-8 border-blue-500 shadow-sm">
+        <div className="bg-white p-5 lg:p-8 rounded-2xl border-l-8 border-blue-500 shadow-sm">
           <div className="flex justify-between items-start mb-2 md:mb-4">
             <p className="font-bold text-gray-500 text-sm md:text-base">TRANSFERENCIA</p>
             <Landmark className="text-blue-500" />
           </div>
-          <p className="text-2xl md:text-3xl font-black text-brand-dark">${stats.transferencia.toLocaleString('es-AR')}</p>
+          <p className="text-2xl lg:text-3xl font-black text-brand-dark break-all">${stats.transferencia.toLocaleString('es-AR')}</p>
         </div>
 
-        <div className="bg-brand-fuchsia p-6 md:p-8 rounded-2xl shadow-lg">
+        <div className="bg-brand-fuchsia p-5 lg:p-8 rounded-2xl shadow-lg">
           <div className="flex justify-between items-start mb-2 md:mb-4 text-brand-dark">
             <p className="font-bold opacity-80 text-sm md:text-base">TOTAL INGRESOS</p>
             <TrendingUp />
           </div>
-          <p className="text-2xl md:text-3xl font-black text-brand-dark">${stats.total.toLocaleString('es-AR')}</p>
+          <p className="text-2xl lg:text-3xl font-black text-brand-dark break-all">${stats.total.toLocaleString('es-AR')}</p>
         </div>
       </div>
     </div>

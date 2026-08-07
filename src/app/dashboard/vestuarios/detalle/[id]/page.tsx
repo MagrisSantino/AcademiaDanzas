@@ -188,14 +188,15 @@ export default function DetalleVestuarioPage() {
               <p className="text-sm font-bold text-gray-500">Grupo: {grupo?.nombre} | Valor: ${Number(vestuario.monto).toLocaleString('es-AR')}</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => { setEditando(!editando); setPanelExcluir(false); }} className="flex items-center gap-2 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors">
+          {/* flex-wrap: en celulares angostos los tres botones no entran en una línea */}
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            <button onClick={() => { setEditando(!editando); setPanelExcluir(false); }} className="flex-1 sm:flex-none justify-center flex items-center gap-2 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors">
               <Pencil size={16} /> Editar
             </button>
-            <button onClick={() => { setPanelExcluir(!panelExcluir); setEditando(false); }} className="flex items-center gap-2 text-sm font-bold bg-brand-pink/40 hover:bg-brand-pink text-brand-dark px-3 py-2 rounded-lg transition-colors">
+            <button onClick={() => { setPanelExcluir(!panelExcluir); setEditando(false); }} className="flex-1 sm:flex-none justify-center flex items-center gap-2 text-sm font-bold bg-brand-pink/40 hover:bg-brand-pink text-brand-dark px-3 py-2 rounded-lg transition-colors whitespace-nowrap">
               <UserMinus size={16} /> Excluir alumnas
             </button>
-            <button onClick={handleEliminarVestuario} className="flex items-center gap-2 text-sm font-bold bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded-lg transition-colors">
+            <button onClick={handleEliminarVestuario} title="Eliminar vestuario" className="flex items-center justify-center gap-2 text-sm font-bold bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded-lg transition-colors">
               <Trash2 size={16} />
             </button>
           </div>
@@ -253,18 +254,18 @@ export default function DetalleVestuarioPage() {
       </div>
 
       {/* Resumen */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4 [&>div]:min-w-0">
         <div className="bg-white p-4 rounded-xl border border-brand-pink shadow-sm">
-          <p className="text-xs font-bold text-gray-500 uppercase">Bailan</p>
+          <p className="text-[11px] lg:text-xs font-bold text-gray-500 uppercase truncate">Bailan</p>
           <p className="text-2xl font-black text-brand-dark">{activas.length}{excluidasFilas.length > 0 && <span className="text-sm font-bold text-gray-400 ml-2">({excluidasFilas.length} excluidas)</span>}</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-brand-pink shadow-sm">
-          <p className="text-xs font-bold text-gray-500 uppercase">Total a recaudar</p>
-          <p className="text-2xl font-black text-brand-dark">${totalEsperado.toLocaleString('es-AR')}</p>
+          <p className="text-[11px] lg:text-xs font-bold text-gray-500 uppercase truncate">Total a recaudar</p>
+          <p className="text-xl lg:text-2xl font-black text-brand-dark break-all">${totalEsperado.toLocaleString('es-AR')}</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-brand-pink shadow-sm">
-          <p className="text-xs font-bold text-gray-500 uppercase">Cobrado</p>
-          <p className="text-2xl font-black text-green-600">${totalCobrado.toLocaleString('es-AR')}</p>
+          <p className="text-[11px] lg:text-xs font-bold text-gray-500 uppercase truncate">Cobrado</p>
+          <p className="text-xl lg:text-2xl font-black text-green-600 break-all">${totalCobrado.toLocaleString('es-AR')}</p>
         </div>
       </div>
 

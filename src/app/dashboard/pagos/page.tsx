@@ -95,18 +95,18 @@ export default function PagosPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-        <div className="bg-white p-4 md:p-6 rounded-xl border border-brand-pink shadow-sm flex items-center gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 lg:gap-6 [&>div]:min-w-0">
+        <div className="bg-white p-4 lg:p-6 rounded-xl border border-brand-pink shadow-sm flex items-center gap-3 lg:gap-4">
           <div className="p-3 bg-green-100 text-green-600 rounded-full"><CheckCircle size={24}/></div>
-          <div><p className="text-xs font-bold text-gray-500 uppercase">Abonaron</p><p className="text-xl md:text-2xl font-black">{abonaron}</p></div>
+          <div><p className="text-[11px] lg:text-xs font-bold text-gray-500 uppercase truncate">Abonaron</p><p className="text-xl md:text-2xl font-black">{abonaron}</p></div>
         </div>
-        <div className="bg-white p-4 md:p-6 rounded-xl border border-brand-pink shadow-sm flex items-center gap-4">
+        <div className="bg-white p-4 lg:p-6 rounded-xl border border-brand-pink shadow-sm flex items-center gap-3 lg:gap-4">
           <div className="p-3 bg-red-100 text-red-600 rounded-full"><XCircle size={24}/></div>
-          <div><p className="text-xs font-bold text-gray-500 uppercase">Pendientes</p><p className="text-xl md:text-2xl font-black">{noAbonaron}</p></div>
+          <div><p className="text-[11px] lg:text-xs font-bold text-gray-500 uppercase truncate">Pendientes</p><p className="text-xl md:text-2xl font-black">{noAbonaron}</p></div>
         </div>
-        <div className="bg-white p-4 md:p-6 rounded-xl border border-brand-pink shadow-sm flex items-center gap-4">
+        <div className="bg-white p-4 lg:p-6 rounded-xl border border-brand-pink shadow-sm flex items-center gap-3 lg:gap-4">
           <div className="p-3 bg-brand-pink text-brand-fuchsia rounded-full"><Percent size={24}/></div>
-          <div><p className="text-xs font-bold text-gray-500 uppercase">Cumplimiento</p><p className="text-xl md:text-2xl font-black">{porcentaje}%</p></div>
+          <div><p className="text-[11px] lg:text-xs font-bold text-gray-500 uppercase truncate">Cumplimiento</p><p className="text-xl md:text-2xl font-black">{porcentaje}%</p></div>
         </div>
       </div>
 

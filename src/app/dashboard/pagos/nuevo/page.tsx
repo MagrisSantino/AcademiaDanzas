@@ -318,7 +318,7 @@ export default function NuevoPagoPage() {
         <Link href="/dashboard/pagos" className="p-2 hover:bg-gray-200 rounded-full transition-colors">
           <ArrowLeft size={24} />
         </Link>
-        <h1 className="text-3xl font-black text-brand-dark">Cargar Pago</h1>
+        <h1 className="text-2xl sm:text-3xl font-black text-brand-dark">Cargar Pago</h1>
       </div>
       <Suspense fallback={<p>Cargando...</p>}>
         <FormularioPago />

@@ -45,7 +45,7 @@ export default function NuevaAlumnaPage() {
         <Link href="/dashboard/alumnas" className="p-2 hover:bg-gray-200 rounded-full transition-colors">
           <ArrowLeft size={24} className="text-gray-600" />
         </Link>
-        <h1 className="text-3xl font-black text-brand-dark">Inscribir Alumna</h1>
+        <h1 className="text-2xl sm:text-3xl font-black text-brand-dark">Inscribir Alumna</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white p-6 md:p-8 rounded-xl shadow-sm border border-brand-pink space-y-6">

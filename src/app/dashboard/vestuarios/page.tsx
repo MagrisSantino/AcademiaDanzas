@@ -237,7 +237,7 @@ export default function VestuariosPage() {
                   <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-center sm:text-right flex items-center gap-6 justify-between sm:justify-end">
                     <div>
                       <p className="text-red-800 text-xs font-bold uppercase tracking-wide">Deuda Total Pendiente</p>
-                      <p className="text-3xl font-black text-red-600">${alumnaSeleccionada.saldoTotal.toLocaleString('es-AR')}</p>
+                      <p className="text-2xl sm:text-3xl font-black text-red-600 break-all">${alumnaSeleccionada.saldoTotal.toLocaleString('es-AR')}</p>
                     </div>
                   </div>
                 </div>
