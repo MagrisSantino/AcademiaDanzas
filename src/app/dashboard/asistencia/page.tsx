@@ -7,11 +7,15 @@ import Link from "next/link";
 export default function ListaGruposAsistencia() {
   const [grupos, setGrupos] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchGrupos = async () => {
-      const { data } = await supabase.from("grupos").select("*").order("nombre");
+      setLoading(true);
+      const { data, error } = await supabase.from("grupos").select("*").order("nombre");
+      if (error) alert("Error al cargar grupos: " + error.message);
       if (data) setGrupos(data);
+      setLoading(false);
     };
     fetchGrupos();
   }, []);
@@ -31,7 +35,9 @@ export default function ListaGruposAsistencia() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtrados.length === 0 ? (
+        {loading ? (
+          <p className="text-gray-400">Cargando grupos...</p>
+        ) : filtrados.length === 0 ? (
           <p className="text-gray-500">No hay grupos disponibles.</p>
         ) : (
           filtrados.map(g => (

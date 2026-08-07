@@ -17,24 +17,33 @@ export default function PagosPage() {
   const [filas, setFilas] = useState<any[]>([]);
   const [abonaron, setAbonaron] = useState(0);
   const [noAbonaron, setNoAbonaron] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => { fetchDatos(); }, [mesFiltro, anioFiltro]);
 
   const fetchDatos = async () => {
-    const { data: aData } = await supabase.from("alumnas").select("*").eq("activa", true).order("nombre");
-    const { data: pData } = await supabase.from("pagos").select("*").eq("mes", mesFiltro).eq("anio", parseInt(anioFiltro));
-    
+    setLoading(true);
+    // Traemos todas las alumnas, no solo las activas: si una se da de baja a mitad
+    // de año sus pagos de los meses anteriores tienen que seguir apareciendo.
+    const { data: aData, error: aError } = await supabase.from("alumnas").select("*").order("nombre");
+    const { data: pData, error: pError } = await supabase.from("pagos").select("*").eq("mes", mesFiltro).eq("anio", parseInt(anioFiltro));
+    if (aError || pError) { alert("Error al cargar datos: " + (aError?.message || pError?.message)); setLoading(false); return; }
+
     if (aData) {
-      let calcAbonaron = 0; 
-      let calcNoAbonaron = 0;
       const mesIdx = mesesReales.indexOf(mesFiltro);
       const hoy = new Date();
       const dueDate = new Date(parseInt(anioFiltro), mesIdx, 15, 23, 59, 59);
 
-      const combinados = aData.filter(a => new Date(a.fecha_inicio) <= new Date(parseInt(anioFiltro), mesIdx, 31)).map(a => {
-        const p = pData?.find(p => p.alumna_id === a.id);
-        
-        // "No asistió" ya no suma a abonaron ni a noAbonaron, queda neutral para el porcentaje
+      const combinados = aData
+        .filter(a => new Date(a.fecha_inicio) <= new Date(parseInt(anioFiltro), mesIdx, 31))
+        .map(a => ({ alumna: a, pago: pData?.find(p => p.alumna_id === a.id) || null }))
+        // Una alumna de baja solo se muestra en los meses donde tiene movimiento.
+        .filter(f => f.alumna.activa || f.pago);
+
+      let calcAbonaron = 0;
+      let calcNoAbonaron = 0;
+      combinados.forEach(({ pago: p }) => {
+        // "No asistió" no suma a abonaron ni a noAbonaron, queda neutral para el porcentaje
         if (p && p.condicion === 'Pagado') {
           calcAbonaron++;
         } else if (p && p.condicion === 'No asistió') {
@@ -42,14 +51,13 @@ export default function PagosPage() {
         } else if ((!p || p?.condicion === 'No pagado' || p?.condicion === 'Parcial') && hoy > dueDate) {
           calcNoAbonaron++;
         }
-        
-        return { alumna: a, pago: p || null };
       });
-      
-      setFilas(combinados); 
-      setAbonaron(calcAbonaron); 
+
+      setFilas(combinados);
+      setAbonaron(calcAbonaron);
       setNoAbonaron(calcNoAbonaron);
     }
+    setLoading(false);
   };
 
   const handleEliminarPago = async (e: React.MouseEvent, pagoId: string, nombreAlumna: string) => {
@@ -129,7 +137,9 @@ export default function PagosPage() {
               </tr>
             </thead>
             <tbody>
-              {filasFiltradas.length === 0 ? (
+              {loading ? (
+                <tr><td colSpan={6} className="p-8 text-center text-gray-400">Cargando datos...</td></tr>
+              ) : filasFiltradas.length === 0 ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-500">No hay alumnas registradas.</td></tr>
               ) : (
                 filasFiltradas.map(f => {
@@ -142,7 +152,10 @@ export default function PagosPage() {
                       <td className="p-4">
                         {f.pago ? <button onClick={(e) => handleEliminarPago(e, f.pago.id, f.alumna.nombre)} className="text-red-400 hover:text-red-700 p-1"><Trash2 size={20} /></button> : <span className="text-gray-300 ml-2">-</span>}
                       </td>
-                      <td className="p-4 font-bold">{f.alumna.nombre}</td>
+                      <td className="p-4 font-bold">
+                        {f.alumna.nombre}
+                        {!f.alumna.activa && <span className="ml-2 px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-gray-200 text-gray-600 align-middle">Baja</span>}
+                      </td>
                       <td className="p-4 text-sm opacity-80">{f.pago?.danzas?.join(", ") || "-"}</td>
                       <td className="p-4 font-bold text-xs uppercase">{f.pago ? f.pago.condicion : "Pendiente"}</td>
                       <td className="p-4 font-black">{displayMonto}</td>

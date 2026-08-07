@@ -7,12 +7,16 @@ import Link from "next/link";
 export default function GruposPage() {
   const [grupos, setGrupos] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => { fetchGrupos(); }, []);
 
   const fetchGrupos = async () => {
-    const { data } = await supabase.from("grupos").select("*").order("nombre");
+    setLoading(true);
+    const { data, error } = await supabase.from("grupos").select("*").order("nombre");
+    if (error) alert("Error al cargar grupos: " + error.message);
     if (data) setGrupos(data);
+    setLoading(false);
   };
 
   const handleEliminar = async (id: string, nombre: string) => {
@@ -43,7 +47,9 @@ export default function GruposPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filtrados.length === 0 ? (
+        {loading ? (
+          <p className="text-gray-400 col-span-full">Cargando grupos...</p>
+        ) : filtrados.length === 0 ? (
           <p className="text-gray-500 col-span-full">No hay grupos registrados todavía.</p>
         ) : (
           filtrados.map(g => (

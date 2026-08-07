@@ -42,14 +42,14 @@ export default function EditarAlumnaPage() {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.from("alumnas").update([{
+    const { error } = await supabase.from("alumnas").update({
       nombre: formData.nombre,
       dni: formData.dni,
       direccion: formData.direccion,
       telefono: formData.telefono,
       fecha_inicio: formData.fecha_inicio,
       activa: formData.activa
-    }]).eq("id", alumnaId);
+    }).eq("id", alumnaId);
 
     setLoading(false);
 

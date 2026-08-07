@@ -8,16 +8,37 @@ import Link from "next/link";
 export default function AlumnasPage() {
   const [alumnas, setAlumnas] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => { fetchAlumnas(); }, []);
 
   const fetchAlumnas = async () => {
-    const { data } = await supabase.from("alumnas").select("*").order("nombre", { ascending: true });
+    setLoading(true);
+    const { data, error } = await supabase.from("alumnas").select("*").order("nombre", { ascending: true });
+    if (error) alert("Error al cargar alumnas: " + error.message);
     if (data) setAlumnas(data);
+    setLoading(false);
   };
 
   const handleEliminar = async (id: string, nombre: string) => {
-    const confirmar = window.confirm(`¿Estás segura de que querés eliminar a ${nombre}?\n\nNota: Si la alumna ya tiene pagos registrados, el sistema no te dejará borrarla. En ese caso, pasala a estado "Baja".`);
+    // Antes de borrar verificamos que no tenga historial, porque el borrado
+    // arrastra los pagos de la alumna y esa información no se puede recuperar.
+    const { count, error: errorConteo } = await supabase
+      .from("pagos")
+      .select("id", { count: "exact", head: true })
+      .eq("alumna_id", id);
+
+    if (errorConteo) {
+      alert("No se pudo verificar el historial de pagos, así que no se borró nada.\n\nProbá de nuevo en un momento.");
+      return;
+    }
+
+    if (count && count > 0) {
+      alert(`${nombre} tiene ${count} pago(s) registrados en el sistema.\n\nNo se puede eliminar porque se perdería todo ese historial.\n\nSi ya no cursa, entrá a editarla y pasala a estado "Baja": deja de aparecer en los listados pero se conservan sus pagos.`);
+      return;
+    }
+
+    const confirmar = window.confirm(`¿Eliminar a ${nombre}?\n\nNo tiene pagos registrados, así que no se pierde historial.\n\nEsta acción no se puede deshacer.`);
     if (confirmar) {
       const { error } = await supabase.from("alumnas").delete().eq("id", id);
       if (error) alert("Error: " + error.message);
@@ -57,7 +78,11 @@ export default function AlumnasPage() {
               </tr>
             </thead>
             <tbody>
-              {filtradas.map(a => (
+              {loading ? (
+                <tr><td colSpan={7} className="p-8 text-center text-gray-400">Cargando alumnas...</td></tr>
+              ) : filtradas.length === 0 ? (
+                <tr><td colSpan={7} className="p-8 text-center text-gray-400">No hay alumnas registradas.</td></tr>
+              ) : filtradas.map(a => (
                 <tr key={a.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${!a.activa && 'opacity-50'}`}>
                   <td className="p-4 flex gap-4 items-center">
                     <Link href={`/dashboard/alumnas/editar/${a.id}`} className="text-brand-fuchsia hover:text-brand-dark"><Pencil size={20} /></Link>

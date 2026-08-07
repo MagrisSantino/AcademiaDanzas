@@ -38,17 +38,23 @@ export default function TomarAsistenciaPage() {
 
   // Cargar la asistencia de la fecha seleccionada
   useEffect(() => {
+    let cancelled = false;
     const fetchAsistencia = async () => {
-      const { data } = await supabase.from("asistencia").select("*").eq("grupo_id", grupoId).eq("fecha", fecha).single();
-      if (data) {
-        setRegistroId(data.id);
-        setPresentes(data.presentes_ids || []);
+      // Sin .single(): si por algún motivo hubiera dos registros del mismo día,
+      // .single() fallaba y el guardado terminaba creando todavía uno más.
+      const { data } = await supabase.from("asistencia").select("*").eq("grupo_id", grupoId).eq("fecha", fecha).limit(1);
+      if (cancelled) return;
+      const registro = data?.[0];
+      if (registro) {
+        setRegistroId(registro.id);
+        setPresentes(registro.presentes_ids || []);
       } else {
         setRegistroId(null);
-        setPresentes([]); // Limpiamos si no hay registro para ese día
+        setPresentes([]);
       }
     };
     if (grupoId && fecha) fetchAsistencia();
+    return () => { cancelled = true; };
   }, [grupoId, fecha]);
 
   const toggleAsistencia = (alumnaId: string) => {

@@ -14,9 +14,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     const verificarSesion = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) router.push("/"); 
-      else setVerificando(false); 
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) router.push("/");
+      else setVerificando(false);
     };
     verificarSesion();
   }, [router]);

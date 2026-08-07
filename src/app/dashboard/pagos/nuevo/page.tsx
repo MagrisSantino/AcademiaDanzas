@@ -22,6 +22,7 @@ function FormularioPago() {
   const danzasDisponibles = ["Jazz", "Árabe", "Tap", "Iniciación", "Preparatorio", "Street"];
   
   const [nuevaEntrega, setNuevaEntrega] = useState("");
+  const [montoOriginal, setMontoOriginal] = useState(0);
 
   const [formData, setFormData] = useState({
     alumna_id: alumnaUrl,
@@ -35,31 +36,56 @@ function FormularioPago() {
   });
 
   useEffect(() => {
-    const fetchDatos = async () => {
+    const fetchAlumnas = async () => {
       const { data: aData } = await supabase.from("alumnas").select("id, nombre").eq("activa", true).order("nombre");
       if (aData) setAlumnas(aData);
+    };
+    fetchAlumnas();
+  }, []);
 
-      if (alumnaUrl && mesUrl && anioUrl) {
-        const { data: pExist } = await supabase.from("pagos").select("*").eq("alumna_id", alumnaUrl).eq("mes", mesUrl).eq("anio", parseInt(anioUrl)).single();
-        if (pExist) {
-          setPagoIdExistente(pExist.id);
-          setFormData({
-            alumna_id: pExist.alumna_id,
-            monto: pExist.monto.toString(),
-            monto_total_cuota: pExist.monto_total_cuota?.toString() || pExist.monto.toString(),
-            fecha_pago: pExist.fecha_pago,
-            medio_pago: pExist.medio_pago || "Efectivo",
-            condicion: pExist.condicion,
-            mes: pExist.mes,
-            anio: pExist.anio.toString(),
-          });
-          setDanzas(pExist.danzas || []);
-          setObservaciones(pExist.observaciones || "");
-        }
+  // Buscamos el pago de la alumna seleccionada cada vez que cambia, no solo cuando
+  // viene por URL. Si no, elegirla del desplegable creaba un pago duplicado.
+  useEffect(() => {
+    const alumnaActual = formData.alumna_id;
+    if (!alumnaActual) {
+      setPagoIdExistente(null);
+      return;
+    }
+
+    let cancelado = false;
+    const buscarPagoExistente = async () => {
+      const { data } = await supabase.from("pagos").select("*")
+        .eq("alumna_id", alumnaActual).eq("mes", mesUrl).eq("anio", parseInt(anioUrl))
+        .order("fecha_pago", { ascending: true }).limit(1);
+
+      if (cancelado) return;
+      const pExist = data?.[0];
+
+      if (pExist) {
+        setPagoIdExistente(pExist.id);
+        setFormData(prev => ({
+          ...prev,
+          alumna_id: pExist.alumna_id,
+          monto: pExist.monto.toString(),
+          monto_total_cuota: pExist.monto_total_cuota?.toString() || pExist.monto.toString(),
+          fecha_pago: pExist.fecha_pago,
+          medio_pago: pExist.medio_pago || "Efectivo",
+          condicion: pExist.condicion,
+          mes: pExist.mes,
+          anio: pExist.anio.toString(),
+        }));
+        setDanzas(pExist.danzas || []);
+        setObservaciones(pExist.observaciones || "");
+        setMontoOriginal(Number(pExist.monto) || 0);
+      } else {
+        setPagoIdExistente(null);
+        setMontoOriginal(0);
       }
     };
-    fetchDatos();
-  }, [alumnaUrl, mesUrl, anioUrl]);
+
+    buscarPagoExistente();
+    return () => { cancelado = true; };
+  }, [formData.alumna_id, mesUrl, anioUrl]);
 
   const saldo = (parseFloat(formData.monto_total_cuota) || 0) - (parseFloat(formData.monto) || 0);
 
@@ -97,11 +123,38 @@ function FormularioPago() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    if (!formData.alumna_id) { alert("Seleccioná una alumna antes de guardar."); return; }
 
     const isNoAsistio = formData.condicion === "No asistió";
-    const montoFinal = isNoAsistio ? 0 : (parseFloat(formData.monto) || 0);
-    const mTotal = isNoAsistio ? 0 : (formData.condicion === "Pagado" ? montoFinal : parseFloat(formData.monto_total_cuota || "0"));
+
+    // "No asistió" pone el monto en cero. Si ya había plata cobrada, avisamos
+    // antes de pisarla en vez de borrarla en silencio.
+    if (isNoAsistio && montoOriginal > 0) {
+      const seguir = window.confirm(`Esta alumna ya tenía $${montoOriginal} registrados en ${formData.mes}.\n\nMarcarla como "No asistió" va a poner ese monto en cero y se pierde el registro del cobro.\n\n¿Querés continuar igual?`);
+      if (!seguir) return;
+    }
+
+    setLoading(true);
+
+    const totalCuotaCargado = parseFloat(formData.monto_total_cuota || "0") || 0;
+    const montoIngresado = parseFloat(formData.monto) || 0;
+
+    let montoFinal: number;
+    let mTotal: number;
+
+    if (isNoAsistio) {
+      montoFinal = 0;
+      mTotal = 0;
+    } else if (formData.condicion === "Pagado") {
+      // Pagado = abonó la cuota completa. Si venía de un parcial, conservamos el
+      // costo real de la cuota en vez de rebajarlo al último monto entregado.
+      mTotal = totalCuotaCargado > montoIngresado ? totalCuotaCargado : montoIngresado;
+      montoFinal = mTotal;
+    } else {
+      montoFinal = montoIngresado;
+      // Nunca dejamos el total por debajo de lo ya abonado.
+      mTotal = totalCuotaCargado > montoIngresado ? totalCuotaCargado : montoIngresado;
+    }
 
     const payload = {
       alumna_id: formData.alumna_id,
@@ -116,8 +169,18 @@ function FormularioPago() {
       observaciones: observaciones
     };
 
-    const { error } = pagoIdExistente 
-      ? await supabase.from("pagos").update(payload).eq("id", pagoIdExistente)
+    // Última verificación antes de insertar: si mientras tanto se creó un pago
+    // para esta alumna/mes/año, lo actualizamos en lugar de duplicarlo.
+    let idDestino = pagoIdExistente;
+    if (!idDestino) {
+      const { data: yaExiste } = await supabase.from("pagos").select("id")
+        .eq("alumna_id", formData.alumna_id).eq("mes", formData.mes).eq("anio", parseInt(formData.anio))
+        .limit(1);
+      if (yaExiste?.[0]) idDestino = yaExiste[0].id;
+    }
+
+    const { error } = idDestino
+      ? await supabase.from("pagos").update(payload).eq("id", idDestino)
       : await supabase.from("pagos").insert([payload]);
 
     setLoading(false);
@@ -129,10 +192,15 @@ function FormularioPago() {
     <form onSubmit={handleSubmit} className="bg-white p-6 md:p-8 rounded-xl border border-brand-pink space-y-6 shadow-sm">
       <div>
         <label className="block text-sm font-bold text-gray-700 mb-1">Alumna</label>
-        <select disabled={!!pagoIdExistente} value={formData.alumna_id} onChange={e => setFormData({...formData, alumna_id: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia">
+        <select disabled={!!alumnaUrl} value={formData.alumna_id} onChange={e => setFormData({...formData, alumna_id: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia disabled:bg-gray-100">
           <option value="">Seleccionar...</option>
           {alumnas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
         </select>
+        {pagoIdExistente && (
+          <p className="mt-2 text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            Esta alumna ya tiene un pago cargado en {formData.mes} {formData.anio}. Se cargaron sus datos y al guardar se actualiza ese registro (no se crea uno nuevo).
+          </p>
+        )}
       </div>
 
       <div className={`grid grid-cols-1 md:grid-cols-2 gap-4`}>
@@ -151,7 +219,7 @@ function FormularioPago() {
             <label className="block text-sm font-bold text-gray-700 mb-1">
               {formData.condicion === "Parcial" && pagoIdExistente ? 'Total abonado hasta ahora ($)' : 'Monto que entrega hoy ($)'}
             </label>
-            <input type="number" value={formData.monto} onChange={e => setFormData({...formData, monto: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia" />
+            <input type="number" min="0" value={formData.monto} onChange={e => setFormData({...formData, monto: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia" />
           </div>
         )}
 
@@ -172,7 +240,7 @@ function FormularioPago() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-bold text-yellow-800 mb-1">Costo Total de la Cuota ($)</label>
-              <input type="number" value={formData.monto_total_cuota} onChange={e => setFormData({...formData, monto_total_cuota: e.target.value})} className="w-full p-2 border border-yellow-300 bg-white rounded outline-none focus:ring-2 focus:ring-yellow-500" />
+              <input type="number" min="0" value={formData.monto_total_cuota} onChange={e => setFormData({...formData, monto_total_cuota: e.target.value})} className="w-full p-2 border border-yellow-300 bg-white rounded outline-none focus:ring-2 focus:ring-yellow-500" />
             </div>
             <div>
               <p className="text-sm font-bold text-yellow-800 mb-1">Saldo Pendiente</p>
@@ -187,6 +255,7 @@ function FormularioPago() {
                 <div className="flex-1 flex gap-2">
                   <input
                     type="number"
+                    min="0"
                     placeholder="Monto ($)"
                     value={nuevaEntrega}
                     onChange={e => setNuevaEntrega(e.target.value)}

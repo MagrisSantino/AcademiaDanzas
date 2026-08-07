@@ -60,7 +60,7 @@ export default function GrupoVestuariosPage() {
           </div>
           <div className="w-full sm:w-48">
             <label className="block text-xs font-bold text-gray-600 mb-1">Costo por Alumna ($)</label>
-            <input type="number" required value={monto} onChange={e => setMonto(e.target.value)} placeholder="Ej: 45000" className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia" />
+            <input type="number" min="0" required value={monto} onChange={e => setMonto(e.target.value)} placeholder="Ej: 45000" className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia" />
           </div>
           <button type="submit" className="w-full sm:w-auto bg-brand-fuchsia text-white font-bold py-2 px-6 rounded-lg hover:opacity-90 transition-opacity">Crear</button>
         </form>

@@ -8,7 +8,8 @@ import Link from "next/link";
 export default function VestuariosPage() {
   const [tab, setTab] = useState<'grupos' | 'alumnas'>('grupos');
   const [loadingGeneral, setLoadingGeneral] = useState(false);
-  
+  const [loadingDatos, setLoadingDatos] = useState(true);
+
   // Estados de datos
   const [grupos, setGrupos] = useState<any[]>([]);
   const [cuentas, setCuentas] = useState<any[]>([]);
@@ -18,7 +19,7 @@ export default function VestuariosPage() {
   const [alumnaSeleccionada, setAlumnaSeleccionada] = useState<any>(null);
 
   const fetchData = async () => {
-    // Traemos todo de una vez para armar la cuenta corriente global
+    setLoadingDatos(true);
     const { data: gData } = await supabase.from("grupos").select("*").order("nombre");
     const { data: aData } = await supabase.from("alumnas").select("*").eq("activa", true).order("nombre");
     const { data: vData } = await supabase.from("vestuarios").select("*");
@@ -63,6 +64,7 @@ export default function VestuariosPage() {
 
       setCuentas(cuentasCalculadas);
     }
+    setLoadingDatos(false);
   };
 
   useEffect(() => {
@@ -77,6 +79,7 @@ export default function VestuariosPage() {
     const fechaHoy = new Date().toISOString().split('T')[0];
     const nota = `[${new Date().toLocaleDateString('es-AR')}] Pago unificado de saldo restante.`;
 
+    let huboError = false;
     for (const det of alumnaSeleccionada.detalles) {
       if (det.saldo > 0) {
         const payload = {
@@ -88,18 +91,24 @@ export default function VestuariosPage() {
           observaciones: det.pago?.observaciones ? `${det.pago.observaciones}\n${nota}` : nota
         };
 
-        if (det.pago) {
-          await supabase.from("pagos_vestuarios").update(payload).eq("id", det.pago.id);
-        } else {
-          await supabase.from("pagos_vestuarios").insert([payload]);
-        }
+        const { error } = det.pago
+          ? await supabase.from("pagos_vestuarios").update(payload).eq("id", det.pago.id)
+          : await supabase.from("pagos_vestuarios").insert([payload]);
+
+        if (error) { huboError = true; break; }
       }
     }
 
-    await fetchData(); // Recargamos los datos
+    await fetchData();
     setLoadingGeneral(false);
-    setAlumnaSeleccionada(null); // Volvemos a la tabla general
-    alert("¡Todos los pagos fueron registrados con éxito!");
+    // Volvemos a la tabla en los dos casos: el detalle en pantalla quedó con los
+    // saldos viejos y mostrarlos después de un error confunde más de lo que ayuda.
+    setAlumnaSeleccionada(null);
+    if (huboError) {
+      alert("Hubo un error y no se registraron todos los pagos.\n\nLos saldos de la tabla ya están actualizados: fijate cuáles quedaron pendientes y volvé a intentar.");
+    } else {
+      alert("¡Todos los pagos fueron registrados con éxito!");
+    }
   };
 
   const cuentasFiltradas = cuentas.filter(c => c.alumna.nombre.toLowerCase().includes(busqueda.toLowerCase()));
@@ -124,7 +133,11 @@ export default function VestuariosPage() {
 
       {tab === 'grupos' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {grupos.map(g => (
+          {loadingDatos ? (
+            <p className="text-gray-400 col-span-full">Cargando vestuarios...</p>
+          ) : grupos.length === 0 ? (
+            <p className="text-gray-500 col-span-full">No hay grupos disponibles.</p>
+          ) : grupos.map(g => (
             <Link key={g.id} href={`/dashboard/vestuarios/grupo/${g.id}`} className="bg-white rounded-xl shadow-sm border border-brand-pink p-5 hover:shadow-md transition-all flex justify-between items-center group">
               <div>
                 <h2 className="text-xl font-black text-brand-dark mb-1 group-hover:text-brand-fuchsia transition-colors">{g.nombre}</h2>

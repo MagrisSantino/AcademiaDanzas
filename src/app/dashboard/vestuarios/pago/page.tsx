@@ -32,7 +32,8 @@ function FormularioPagoVestuario() {
       if (vData) setVestuario(vData);
       if (aData) setAlumna(aData);
 
-      const { data: pExist } = await supabase.from("pagos_vestuarios").select("*").eq("vestuario_id", vestuarioId).eq("alumna_id", alumnaId).single();
+      const { data: pData } = await supabase.from("pagos_vestuarios").select("*").eq("vestuario_id", vestuarioId).eq("alumna_id", alumnaId).limit(1);
+      const pExist = pData?.[0];
       if (pExist) {
         setPagoIdExistente(pExist.id);
         setFormData({ monto: pExist.monto.toString(), condicion: pExist.condicion, fecha_pago: pExist.fecha_pago || new Date().toISOString().split('T')[0] });
@@ -75,10 +76,18 @@ function FormularioPagoVestuario() {
     else if (Number(formData.monto) > 0 && Number(formData.monto) < Number(vestuario.monto)) condFinal = "Parcial";
     else condFinal = "Pendiente";
 
-    const payload = { vestuario_id: vestuarioId, alumna_id: alumnaId, monto: parseFloat(formData.monto), condicion: condFinal, observaciones, fecha_pago: formData.fecha_pago };
+    const payload = { vestuario_id: vestuarioId, alumna_id: alumnaId, monto: parseFloat(formData.monto) || 0, condicion: condFinal, observaciones, fecha_pago: formData.fecha_pago };
 
-    const { error } = pagoIdExistente 
-      ? await supabase.from("pagos_vestuarios").update(payload).eq("id", pagoIdExistente)
+    // Verificamos de nuevo antes de insertar para no duplicar el cobro.
+    let idDestino = pagoIdExistente;
+    if (!idDestino) {
+      const { data: yaExiste } = await supabase.from("pagos_vestuarios").select("id")
+        .eq("vestuario_id", vestuarioId).eq("alumna_id", alumnaId).limit(1);
+      if (yaExiste?.[0]) idDestino = yaExiste[0].id;
+    }
+
+    const { error } = idDestino
+      ? await supabase.from("pagos_vestuarios").update(payload).eq("id", idDestino)
       : await supabase.from("pagos_vestuarios").insert([payload]);
 
     setLoading(false);
@@ -109,7 +118,7 @@ function FormularioPagoVestuario() {
           <p className="text-sm font-bold text-yellow-800 mb-3 uppercase tracking-wide">Registrar nueva entrega de dinero</p>
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 flex gap-2">
-              <input type="number" placeholder="Monto que entrega ($)" value={nuevaEntrega} onChange={e => setNuevaEntrega(e.target.value)} className="w-full p-3 border border-yellow-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500 font-bold" />
+              <input type="number" min="0" placeholder="Monto que entrega ($)" value={nuevaEntrega} onChange={e => setNuevaEntrega(e.target.value)} className="w-full p-3 border border-yellow-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500 font-bold" />
               <button type="button" onClick={handleSumarEntrega} className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-4 rounded-lg transition-colors flex items-center gap-1"><Plus size={18} /> Sumar</button>
             </div>
             <button type="button" onClick={handleCompletarPago} className="bg-green-500 hover:bg-green-600 text-white font-bold px-4 py-3 sm:py-2 rounded-lg transition-colors flex items-center justify-center gap-2"><CheckCircle size={18} /> Completar Todo</button>
@@ -119,7 +128,7 @@ function FormularioPagoVestuario() {
 
       <div>
         <label className="block text-sm font-bold text-gray-700 mb-1">Total Abonado a la fecha ($)</label>
-        <input type="number" value={formData.monto} onChange={e => setFormData({...formData, monto: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia" />
+        <input type="number" min="0" value={formData.monto} onChange={e => setFormData({...formData, monto: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-brand-fuchsia" />
       </div>
 
       <div>
