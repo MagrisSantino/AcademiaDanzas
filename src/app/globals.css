@@ -6,3 +6,24 @@
   --color-brand-dark: #000000;
   --color-brand-light: #ffffff;
 }
+
+/* Impresion del mapa del teatro: sin scroll, con los colores tal cual
+   se ven en pantalla (si no, las butacas ocupadas salen en blanco). */
+@media print {
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+}

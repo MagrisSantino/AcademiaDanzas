@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRouter, usePathname } from "next/navigation";
-import { Users, DollarSign, LogOut, BarChart3, Menu, X, UsersRound, ClipboardCheck, Shirt } from "lucide-react";
+import { Users, DollarSign, LogOut, BarChart3, Menu, X, UsersRound, ClipboardCheck, Shirt, Ticket } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -29,8 +29,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (verificando) return <div className="h-screen flex items-center justify-center bg-gray-50 text-brand-fuchsia font-bold text-xl">Cargando panel...</div>;
 
   return (
-    <div className="flex h-screen bg-gray-50 flex-col md:flex-row overflow-hidden">
-      <div className="md:hidden bg-[#FFDBF8] p-4 flex justify-between items-center shadow-md z-30 relative">
+    <div className="flex h-screen bg-gray-50 flex-col md:flex-row overflow-hidden print:block print:h-auto print:overflow-visible">
+      <div className="md:hidden bg-[#FFDBF8] p-4 flex justify-between items-center shadow-md z-30 relative print:hidden">
         <img src="/logo.png" alt="Lorena La Marca" className="h-10 object-contain" />
         <button onClick={() => setMenuAbierto(!menuAbierto)} className="text-brand-dark p-2">
           {menuAbierto ? <X size={28} /> : <Menu size={28} />}
@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {menuAbierto && <div className="fixed inset-0 bg-black/50 z-20 md:hidden" onClick={() => setMenuAbierto(false)} />}
 
-      <aside className={`fixed md:static inset-y-0 left-0 w-64 bg-[#FFDBF8] text-brand-dark flex flex-col shadow-2xl z-30 transform transition-transform duration-300 ease-in-out ${menuAbierto ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 h-full`}>
+      <aside className={`fixed md:static inset-y-0 left-0 w-64 bg-[#FFDBF8] text-brand-dark flex flex-col shadow-2xl z-30 transform transition-transform duration-300 ease-in-out ${menuAbierto ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 h-full print:hidden`}>
         <div className="p-8 hidden md:flex justify-center">
           <img src="/logo.png" alt="Lorena La Marca" className="w-48 h-auto block transition-transform hover:scale-105" style={{ maxHeight: '120px', objectFit: 'contain' }} />
         </div>
@@ -66,6 +66,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Shirt size={20} /> Vestuarios
           </Link>
           
+          <Link href="/dashboard/festivales" onClick={() => setMenuAbierto(false)} className={`flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${pathname.includes('/festivales') ? 'bg-brand-dark text-brand-fuchsia scale-105 shadow-lg' : 'hover:bg-black/10'}`}>
+            <Ticket size={20} /> Festival
+          </Link>
+
           <Link href="/dashboard/estadisticas" onClick={() => setMenuAbierto(false)} className={`flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${pathname.includes('/estadisticas') ? 'bg-brand-dark text-brand-fuchsia scale-105 shadow-lg' : 'hover:bg-black/10'}`}>
             <BarChart3 size={20} /> Estadísticas
           </Link>
@@ -78,7 +82,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-6 lg:p-10 bg-[#fdfdfd] w-full relative">
+      <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-6 lg:p-10 bg-[#fdfdfd] w-full relative print:overflow-visible print:p-0">
         {children}
       </main>
     </div>
