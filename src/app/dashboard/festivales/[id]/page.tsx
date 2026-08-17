@@ -43,16 +43,21 @@ export default function FestivalPage() {
 
   // Selección en el mapa
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
-  const [modal, setModal] = useState<null | "venta" | "bloqueo">(null);
+  const [modal, setModal] = useState<null | "venta" | "bloqueo" | "cobro">(null);
   const [detalle, setDetalle] = useState<any>(null);
   const [guardando, setGuardando] = useState(false);
 
   // Formulario de venta
   const [alumnaId, setAlumnaId] = useState("");
   const [busquedaAlumna, setBusquedaAlumna] = useState("");
-  const [pagado, setPagado] = useState(true);
+  const [formaPago, setFormaPago] = useState<"todo" | "parte" | "nada">("todo");
+  const [montoParcial, setMontoParcial] = useState("");
   const [observacion, setObservacion] = useState("");
   const [motivo, setMotivo] = useState("");
+
+  // Cobranza de una venta ya registrada
+  const [ventaCobrando, setVentaCobrando] = useState<any>(null);
+  const [montoCobro, setMontoCobro] = useState("");
 
   // Listado
   const [filtro, setFiltro] = useState<"todas" | "impagas" | "pagadas" | "anuladas">("todas");
@@ -183,30 +188,83 @@ export default function FestivalPage() {
     setBusquedaAlumna("");
     setObservacion("");
     setMotivo("");
-    setPagado(true);
+    setFormaPago("todo");
+    setMontoParcial("");
     setModal(null);
+  };
+
+  /**
+   * Reparte una cobranza entre las butacas de la venta, en orden de
+   * butaca: llena una, pasa a la siguiente. Así la plata siempre está
+   * asignada a butacas concretas y los totales cierran solos.
+   */
+  const repartirPago = (items: any[], monto: number) => {
+    let resto = monto;
+    const cambios: { id: string; monto_pagado: number }[] = [];
+    for (const i of items) {
+      const precio = Number(i.precio || 0);
+      const yaPago = Number(i.monto_pagado || 0);
+      const falta = Math.max(0, precio - yaPago);
+      if (falta <= 0 || resto <= 0) continue;
+      const suma = Math.min(falta, resto);
+      resto -= suma;
+      cambios.push({ id: i.id, monto_pagado: yaPago + suma });
+    }
+    return cambios;
+  };
+
+  const guardarMontos = async (cambios: { id: string; monto_pagado: number }[]) => {
+    if (cambios.length === 0) return true;
+    const resultados = await Promise.all(
+      cambios.map(c =>
+        supabase.from("festival_entradas").update({ monto_pagado: c.monto_pagado }).eq("id", c.id)
+      )
+    );
+    const falla = resultados.find(r => r.error);
+    if (falla?.error) {
+      alert("Error al registrar el pago: " + falla.error.message + "\n\nActualizo la pantalla para que veas cuánto quedó cobrado.");
+      await fetchTodo();
+      return false;
+    }
+    return true;
   };
 
   const registrarVenta = async () => {
     if (!alumnaId) { alert("Elegí la alumna a la que se le asigna la entrada."); return; }
     if (seleccionadas.size === 0) return;
 
+    // Cuánta plata entra ahora, según lo que se eligió en el modal
+    let cobradoAhora = 0;
+    if (formaPago === "todo") cobradoAhora = totalSeleccion;
+    if (formaPago === "parte") {
+      cobradoAhora = parseFloat(montoParcial);
+      if (!isFinite(cobradoAhora) || cobradoAhora <= 0) { alert("Escribí cuánta plata te dejó."); return; }
+      if (cobradoAhora > totalSeleccion) { alert(`No puede ser más que el total de la venta (${pesos(totalSeleccion)}).`); return; }
+    }
+
     setGuardando(true);
     const ventaId = crypto.randomUUID();
-    const filas = listaSeleccion.map(b => ({
-      festival_id: festivalId,
-      fila: b.fila,
-      butaca: b.butaca,
-      sector: sectorDeFila(b.fila),
-      estado: "vendida",
-      alumna_id: alumnaId,
-      pagado,
-      // Guardamos el precio del momento: si después cambia el precio del
-      // festival, esta venta sigue valiendo lo que se cobró.
-      precio: precioActual,
-      observacion: observacion.trim() || null,
-      venta_id: ventaId,
-    }));
+
+    // El pago parcial se reparte butaca por butaca, en orden
+    let resto = cobradoAhora;
+    const filas = listaSeleccion.map(b => {
+      const suma = Math.min(precioActual, resto);
+      resto -= suma;
+      return {
+        festival_id: festivalId,
+        fila: b.fila,
+        butaca: b.butaca,
+        sector: sectorDeFila(b.fila),
+        estado: "vendida",
+        alumna_id: alumnaId,
+        monto_pagado: suma,
+        // Guardamos el precio del momento: si después cambia el precio del
+        // festival, esta venta sigue valiendo lo que se cobró.
+        precio: precioActual,
+        observacion: observacion.trim() || null,
+        venta_id: ventaId,
+      };
+    });
 
     const { error } = await supabase.from("festival_entradas").insert(filas);
     setGuardando(false);
@@ -231,7 +289,7 @@ export default function FestivalPage() {
       sector: sectorDeFila(b.fila),
       estado: "bloqueada",
       alumna_id: null,
-      pagado: false,
+      monto_pagado: 0,
       precio: 0,
       motivo: motivo.trim() || null,
     }));
@@ -249,20 +307,41 @@ export default function FestivalPage() {
     await fetchTodo();
   };
 
-  const cambiarPago = async (ids: string[], valor: boolean) => {
-    const { error } = await supabase.from("festival_entradas").update({ pagado: valor }).in("id", ids);
-    if (error) { alert("Error: " + error.message); return; }
-    setEntradas(prev => prev.map(e => (ids.includes(e.id) ? { ...e, pagado: valor } : e)));
-    setDetalle((prev: any) => (prev && ids.includes(prev.id) ? { ...prev, pagado: valor } : prev));
+  /** Cobra una parte (o todo lo que falta) de un grupo de butacas. */
+  const cobrar = async (items: any[], monto: number) => {
+    setGuardando(true);
+    const ok = await guardarMontos(repartirPago(items, monto));
+    setGuardando(false);
+    if (!ok) return;
+    setModal(null);
+    setDetalle(null);
+    setVentaCobrando(null);
+    setMontoCobro("");
+    await fetchTodo();
   };
 
-  /** Anular no borra: libera la butaca pero deja el registro para siempre. */
+  /** Vuelve a cero la plata cobrada de esas butacas. */
+  const quitarPago = async (items: any[]) => {
+    const cobrado = items.reduce((s, i) => s + Number(i.monto_pagado || 0), 0);
+    if (cobrado === 0) return;
+    if (!window.confirm(`¿Marcar como impago? Salen ${pesos(cobrado)} de la recaudación.`)) return;
+    const ok = await guardarMontos(items.map(i => ({ id: i.id, monto_pagado: 0 })));
+    if (!ok) return;
+    setDetalle(null);
+    await fetchTodo();
+  };
+
+  /**
+   * Anular no borra: libera la butaca pero deja el registro para siempre.
+   * La plata cobrada de esa butaca vuelve a cero, porque se devuelve.
+   */
   const anular = async (ids: string[], texto: string) => {
     if (!window.confirm(texto)) return;
-    const { error } = await supabase.from("festival_entradas").update({ estado: "anulada" }).in("id", ids);
+    const { error } = await supabase.from("festival_entradas")
+      .update({ estado: "anulada", monto_pagado: 0 }).in("id", ids);
     if (error) { alert("Error al anular: " + error.message); return; }
-    setEntradas(prev => prev.map(e => (ids.includes(e.id) ? { ...e, estado: "anulada" } : e)));
     setDetalle(null);
+    await fetchTodo();
   };
 
   /** Desbloquear sí borra la fila: un bloqueo no tiene plata ni historia detrás. */
@@ -286,7 +365,9 @@ export default function FestivalPage() {
     });
 
     return [...grupos.entries()].map(([id, items]) => {
-      const vigentes = items.filter(i => i.estado === "vendida");
+      const vigentes = [...items.filter(i => i.estado === "vendida")].sort(compararButacas);
+      const total = vigentes.reduce((s, i) => s + Number(i.precio || 0), 0);
+      const cobrado = vigentes.reduce((s, i) => s + Number(i.monto_pagado || 0), 0);
       return {
         id,
         alumna_id: items[0].alumna_id,
@@ -295,9 +376,11 @@ export default function FestivalPage() {
         items: [...items].sort(compararButacas),
         vigentes,
         anuladas: items.filter(i => i.estado === "anulada"),
-        total: vigentes.reduce((s, i) => s + Number(i.precio || 0), 0),
-        cobrado: vigentes.filter(i => i.pagado).reduce((s, i) => s + Number(i.precio || 0), 0),
-        todasPagadas: vigentes.length > 0 && vigentes.every(i => i.pagado),
+        total,
+        cobrado,
+        saldo: total - cobrado,
+        todasPagadas: vigentes.length > 0 && cobrado >= total,
+        pagoParcial: cobrado > 0 && cobrado < total,
         sinVigentes: vigentes.length === 0,
       };
     }).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
@@ -327,7 +410,7 @@ export default function FestivalPage() {
   // ----------------------------------------------------------------
   const resumen = useMemo(() => {
     const vendidas = entradas.filter(e => e.estado === "vendida");
-    const cobrado = vendidas.filter(e => e.pagado).reduce((s, e) => s + Number(e.precio || 0), 0);
+    const cobrado = vendidas.reduce((s, e) => s + Number(e.monto_pagado || 0), 0);
     const total = vendidas.reduce((s, e) => s + Number(e.precio || 0), 0);
     return {
       vendidas: vendidas.length,
@@ -348,7 +431,7 @@ export default function FestivalPage() {
       const r = porAlumna.get(clave)!;
       r.butacas += 1;
       r.total += Number(e.precio || 0);
-      if (e.pagado) r.cobrado += Number(e.precio || 0);
+      r.cobrado += Number(e.monto_pagado || 0);
     });
     return [...porAlumna.values()]
       .map(r => ({ ...r, adeuda: r.total - r.cobrado }))
@@ -363,6 +446,8 @@ export default function FestivalPage() {
       Estado: e.estado,
       Alumna: e.estado === "bloqueada" ? "" : nombreDe(e.alumna_id),
       Precio: Number(e.precio || 0),
+      Cobrado: Number(e.monto_pagado || 0),
+      Saldo: e.estado === "vendida" ? Number(e.precio || 0) - Number(e.monto_pagado || 0) : 0,
       Pagado: e.estado === "vendida" ? (e.pagado ? "SI" : "NO") : "",
       Observacion: e.observacion || "",
       Motivo: e.motivo || "",
@@ -477,7 +562,8 @@ export default function FestivalPage() {
                           {nombreDe(v.alumna_id)}
                           {v.sinVigentes && <span className="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">ANULADA</span>}
                           {!v.sinVigentes && v.todasPagadas && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full">PAGADA</span>}
-                          {!v.sinVigentes && !v.todasPagadas && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">IMPAGA</span>}
+                          {!v.sinVigentes && v.pagoParcial && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">PAGO PARCIAL</span>}
+                          {!v.sinVigentes && !v.todasPagadas && !v.pagoParcial && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">IMPAGA</span>}
                         </p>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           {v.items.map(i => (
@@ -491,7 +577,7 @@ export default function FestivalPage() {
                               <button
                                 key={i.id}
                                 onClick={() => setDetalle(i)}
-                                title="Ver o devolver esta butaca"
+                                title={`${i.fila}-${i.butaca} · cobrado ${pesos(Number(i.monto_pagado || 0))} de ${pesos(Number(i.precio || 0))}`}
                                 className={`text-xs font-bold px-2 py-1 rounded-md border flex items-center gap-1 transition-colors hover:border-brand-fuchsia hover:text-brand-fuchsia ${i.pagado ? "bg-green-50 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}
                               >
                                 <Armchair size={12} /> {i.fila} · {i.butaca}
@@ -508,15 +594,35 @@ export default function FestivalPage() {
 
                       <div className="text-right shrink-0">
                         <p className="font-black text-lg text-brand-dark">{pesos(v.total)}</p>
-                        {!v.sinVigentes && !v.todasPagadas && <p className="text-xs text-red-500 font-bold">Debe {pesos(v.total - v.cobrado)}</p>}
+                        {!v.sinVigentes && v.cobrado > 0 && !v.todasPagadas && (
+                          <p className="text-xs text-gray-500 font-bold">Cobrado {pesos(v.cobrado)}</p>
+                        )}
+                        {!v.sinVigentes && !v.todasPagadas && <p className="text-sm text-red-500 font-black">Debe {pesos(v.saldo)}</p>}
                         {!v.sinVigentes && (
-                          <div className="flex gap-2 justify-end mt-2">
-                            <button
-                              onClick={() => cambiarPago(v.vigentes.map(i => i.id), !v.todasPagadas)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${v.todasPagadas ? "border-gray-300 text-gray-600 hover:bg-gray-100" : "bg-green-600 text-white border-green-600 hover:bg-green-700"}`}
-                            >
-                              {v.todasPagadas ? "Marcar impaga" : "Marcar pagada"}
-                            </button>
+                          <div className="flex gap-2 justify-end mt-2 flex-wrap">
+                            {v.todasPagadas ? (
+                              <button
+                                onClick={() => quitarPago(v.vigentes)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors"
+                              >
+                                Marcar impaga
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => { setVentaCobrando(v); setMontoCobro(String(v.saldo)); setModal("cobro"); }}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold border border-brand-fuchsia text-brand-fuchsia hover:bg-brand-pink/30 transition-colors"
+                                >
+                                  Cobrar una parte
+                                </button>
+                                <button
+                                  onClick={() => cobrar(v.vigentes, v.saldo)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-600 text-white border border-green-600 hover:bg-green-700 transition-colors"
+                                >
+                                  Cobrar todo
+                                </button>
+                              </>
+                            )}
                             <button
                               onClick={() => anular(
                                 v.vigentes.map(i => i.id),
@@ -677,7 +783,9 @@ export default function FestivalPage() {
                 tituloOcupada={(e) =>
                   e.estado === "bloqueada"
                     ? `${e.fila} · Butaca ${e.butaca} · Bloqueada${e.motivo ? ` (${e.motivo})` : ""}`
-                    : `${e.fila} · Butaca ${e.butaca} · ${nombreDe(e.alumna_id)} · ${e.pagado ? "Pagada" : "IMPAGA"}`
+                    : `${e.fila} · Butaca ${e.butaca} · ${nombreDe(e.alumna_id)} · ${
+                        e.pagado ? "Pagada" : `debe ${pesos(Number(e.precio || 0) - Number(e.monto_pagado || 0))}`
+                      }`
                 }
               />
             </div>
@@ -745,10 +853,34 @@ export default function FestivalPage() {
           <label className="block text-sm font-bold text-gray-700 mb-1">Observación</label>
           <input type="text" value={observacion} onChange={e => setObservacion(e.target.value)} placeholder="Ej: las retira la abuela" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-fuchsia outline-none mb-4" />
 
-          <div className="grid grid-cols-2 gap-2 mb-5">
-            <button type="button" onClick={() => setPagado(true)} className={`p-3 rounded-xl border-2 font-bold text-sm transition-colors ${pagado ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>Pagó (efectivo)</button>
-            <button type="button" onClick={() => setPagado(false)} className={`p-3 rounded-xl border-2 font-bold text-sm transition-colors ${!pagado ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>Queda debiendo</button>
+          <label className="block text-sm font-bold text-gray-700 mb-1">¿Cuánto pagó? (efectivo)</label>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <button type="button" onClick={() => setFormaPago("todo")} className={`p-3 rounded-xl border-2 font-bold text-sm transition-colors ${formaPago === "todo" ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>Todo</button>
+            <button type="button" onClick={() => setFormaPago("parte")} className={`p-3 rounded-xl border-2 font-bold text-sm transition-colors ${formaPago === "parte" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>Una parte</button>
+            <button type="button" onClick={() => setFormaPago("nada")} className={`p-3 rounded-xl border-2 font-bold text-sm transition-colors ${formaPago === "nada" ? "bg-red-500 text-white border-red-500" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>Nada</button>
           </div>
+
+          {formaPago === "parte" && (
+            <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+              <label className="block text-sm font-bold text-amber-900 mb-1">¿Cuánta plata te dejó?</label>
+              <div className="relative">
+                <span className="absolute left-3 top-3 text-gray-400 font-bold">$</span>
+                <input
+                  type="number" min="0" step="any" autoFocus
+                  value={montoParcial}
+                  onChange={e => setMontoParcial(e.target.value)}
+                  placeholder="0"
+                  className="w-full pl-8 p-3 border border-amber-300 rounded-lg focus:ring-2 focus:ring-brand-fuchsia outline-none bg-white"
+                />
+              </div>
+              <p className="text-xs text-amber-800 mt-2">
+                Total {pesos(totalSeleccion)} · Queda debiendo{" "}
+                <b>{pesos(Math.max(0, totalSeleccion - (parseFloat(montoParcial) || 0)))}</b>
+              </p>
+            </div>
+          )}
+
+          <div className="mb-5" />
 
           <button onClick={registrarVenta} disabled={guardando || !alumnaId} className="w-full bg-brand-dark text-white font-bold py-3 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
             <Check size={18} /> {guardando ? "Registrando..." : "Registrar venta"}
@@ -775,6 +907,52 @@ export default function FestivalPage() {
         </Modal>
       )}
 
+      {/* ---------- Modal: cobrar una parte de una venta ---------- */}
+      {modal === "cobro" && ventaCobrando && (
+        <Modal titulo="Registrar pago" onCerrar={() => { setModal(null); setVentaCobrando(null); }}>
+          <div className="bg-brand-pink/30 border border-brand-pink rounded-xl p-3 mb-4 space-y-1">
+            <p className="font-black text-brand-dark">{nombreDe(ventaCobrando.alumna_id)}</p>
+            <p className="text-xs text-gray-600">{ventaCobrando.vigentes.map((i: any) => `${i.fila}-${i.butaca}`).join(", ")}</p>
+            <p className="text-sm text-gray-700 pt-1">
+              Total {pesos(ventaCobrando.total)} · cobrado {pesos(ventaCobrando.cobrado)} ·{" "}
+              <b className="text-red-500">debe {pesos(ventaCobrando.saldo)}</b>
+            </p>
+          </div>
+
+          <label className="block text-sm font-bold text-gray-700 mb-1">¿Cuánta plata te deja ahora?</label>
+          <div className="relative mb-2">
+            <span className="absolute left-3 top-3 text-gray-400 font-bold">$</span>
+            <input
+              type="number" min="0" step="any" autoFocus
+              value={montoCobro}
+              onChange={e => setMontoCobro(e.target.value)}
+              className="w-full pl-8 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-fuchsia outline-none"
+            />
+          </div>
+          <button type="button" onClick={() => setMontoCobro(String(ventaCobrando.saldo))} className="text-xs font-bold text-brand-fuchsia hover:underline mb-4">
+            Todo lo que falta ({pesos(ventaCobrando.saldo)})
+          </button>
+
+          <p className="text-xs text-gray-500 mb-4">
+            Después de este pago va a quedar debiendo{" "}
+            <b>{pesos(Math.max(0, ventaCobrando.saldo - (parseFloat(montoCobro) || 0)))}</b>.
+          </p>
+
+          <button
+            onClick={() => {
+              const monto = parseFloat(montoCobro);
+              if (!isFinite(monto) || monto <= 0) { alert("Escribí cuánta plata te deja."); return; }
+              if (monto > ventaCobrando.saldo) { alert(`No puede ser más de lo que debe (${pesos(ventaCobrando.saldo)}).`); return; }
+              cobrar(ventaCobrando.vigentes, monto);
+            }}
+            disabled={guardando}
+            className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <Check size={18} /> {guardando ? "Registrando..." : "Registrar pago"}
+          </button>
+        </Modal>
+      )}
+
       {/* ---------- Modal: detalle de butaca ocupada ---------- */}
       {detalle && (
         <Modal titulo={`Butaca ${detalle.fila} · ${detalle.butaca}`} onCerrar={() => setDetalle(null)}>
@@ -793,20 +971,39 @@ export default function FestivalPage() {
             <>
               <div className="bg-brand-pink/30 border border-brand-pink rounded-xl p-4 mb-4 space-y-1">
                 <p className="font-black text-brand-dark text-lg">{nombreDe(detalle.alumna_id)}</p>
-                <p className="text-sm text-gray-700">{pesos(Number(detalle.precio || 0))} · {detalle.pagado ? <span className="text-green-600 font-bold">Pagada</span> : <span className="text-red-500 font-bold">IMPAGA</span>}</p>
+                <p className="text-sm text-gray-700">
+                  {pesos(Number(detalle.precio || 0))} ·{" "}
+                  {detalle.pagado ? (
+                    <span className="text-green-600 font-bold">Pagada</span>
+                  ) : Number(detalle.monto_pagado || 0) > 0 ? (
+                    <span className="text-amber-600 font-bold">
+                      Cobrado {pesos(Number(detalle.monto_pagado))} · debe {pesos(Number(detalle.precio || 0) - Number(detalle.monto_pagado))}
+                    </span>
+                  ) : (
+                    <span className="text-red-500 font-bold">IMPAGA</span>
+                  )}
+                </p>
                 {detalle.observacion && <p className="text-sm text-gray-600 italic">“{detalle.observacion}”</p>}
                 <p className="text-[11px] text-gray-400">{new Date(detalle.created_at).toLocaleString("es-AR")}</p>
               </div>
 
               <div className="space-y-2">
-                <button onClick={() => cambiarPago([detalle.id], !detalle.pagado)} className={`w-full font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${detalle.pagado ? "border-2 border-gray-300 text-gray-700 hover:bg-gray-100" : "bg-green-600 text-white hover:bg-green-700"}`}>
-                  <Check size={18} /> {detalle.pagado ? "Marcar como impaga" : "Marcar como pagada"}
-                </button>
+                {detalle.pagado ? (
+                  <button onClick={() => quitarPago([detalle])} className="w-full border-2 border-gray-300 text-gray-700 font-bold py-3 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center gap-2">
+                    <Check size={18} /> Marcar como impaga
+                  </button>
+                ) : (
+                  <button onClick={() => cobrar([detalle], Number(detalle.precio || 0) - Number(detalle.monto_pagado || 0))} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2">
+                    <Check size={18} /> Cobrar lo que falta ({pesos(Number(detalle.precio || 0) - Number(detalle.monto_pagado || 0))})
+                  </button>
+                )}
                 <button
                   onClick={() => anular(
                     [detalle.id],
                     `¿Devolver la butaca ${detalle.fila}-${detalle.butaca}?\n\nQueda libre para volver a venderla y el registro se guarda como ANULADA.` +
-                    (detalle.pagado ? `\n\nOJO: esta butaca está PAGADA. Al anularla salen ${pesos(Number(detalle.precio || 0))} de la recaudación, así que acordate de devolver esa plata.` : "")
+                    (Number(detalle.monto_pagado || 0) > 0
+                      ? `\n\nOJO: esta butaca tiene ${pesos(Number(detalle.monto_pagado))} cobrados. Al anularla esa plata sale de la recaudación, así que acordate de devolverla.`
+                      : "")
                   )}
                   className="w-full border-2 border-red-200 text-red-500 font-bold py-3 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
                 >

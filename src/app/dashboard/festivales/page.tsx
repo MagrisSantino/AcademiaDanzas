@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Pencil, Search, Trash2, Ticket, Calendar, MapPin, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Search, Trash2, Ticket, Calendar, MapPin, ChevronRight, AlertTriangle, X } from "lucide-react";
 import Link from "next/link";
 import { TOTAL_BUTACAS } from "@/lib/teatro";
 
@@ -19,12 +19,17 @@ export default function FestivalesPage() {
   const [busqueda, setBusqueda] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // Borrado: pide escribir el nombre, porque se lleva todas las entradas
+  const [aBorrar, setABorrar] = useState<any>(null);
+  const [nombreEscrito, setNombreEscrito] = useState("");
+  const [borrando, setBorrando] = useState(false);
+
   useEffect(() => { fetchDatos(); }, []);
 
   const fetchDatos = async () => {
     setLoading(true);
     const { data: fData, error: fError } = await supabase.from("festivales").select("*").order("fecha", { ascending: false });
-    const { data: eData, error: eError } = await supabase.from("festival_entradas").select("festival_id, estado, pagado, precio");
+    const { data: eData, error: eError } = await supabase.from("festival_entradas").select("festival_id, estado, monto_pagado, precio");
     if (fError || eError) { alert("Error al cargar festivales: " + (fError?.message || eError?.message)); setLoading(false); return; }
     if (fData) setFestivales(fData);
     if (eData) setEntradas(eData);
@@ -35,24 +40,25 @@ export default function FestivalesPage() {
     const propias = entradas.filter(e => e.festival_id === festivalId);
     const vendidas = propias.filter(e => e.estado === "vendida");
     return {
+      total: propias.length,
       vendidas: vendidas.length,
       bloqueadas: propias.filter(e => e.estado === "bloqueada").length,
-      cobrado: vendidas.filter(e => e.pagado).reduce((s, e) => s + Number(e.precio || 0), 0),
+      cobrado: vendidas.reduce((s, e) => s + Number(e.monto_pagado || 0), 0),
     };
   };
 
-  const handleEliminar = async (id: string, nombre: string) => {
-    // Un festival con entradas no se borra nunca: primero hay que
-    // resolver esas ventas. Asi no se pierde plata registrada.
-    const tieneEntradas = entradas.some(e => e.festival_id === id);
-    if (tieneEntradas) {
-      alert(`No se puede eliminar "${nombre}" porque ya tiene entradas registradas.`);
-      return;
-    }
-    if (!window.confirm(`¿Eliminar el festival ${nombre}? Todavía no tiene entradas registradas.`)) return;
-    const { error } = await supabase.from("festivales").delete().eq("id", id);
-    if (error) alert("Error: " + error.message);
-    else setFestivales(festivales.filter(f => f.id !== id));
+  const eliminar = async () => {
+    if (!aBorrar) return;
+    setBorrando(true);
+    // La base borra las entradas junto con el festival (una sola
+    // operacion), asi no puede quedar a medias.
+    const { error } = await supabase.from("festivales").delete().eq("id", aBorrar.id);
+    setBorrando(false);
+    if (error) { alert("Error al eliminar: " + error.message); return; }
+    setFestivales(festivales.filter(f => f.id !== aBorrar.id));
+    setEntradas(entradas.filter(e => e.festival_id !== aBorrar.id));
+    setABorrar(null);
+    setNombreEscrito("");
   };
 
   const filtrados = festivales.filter(f =>
@@ -130,7 +136,7 @@ export default function FestivalesPage() {
                     <Link href={`/dashboard/festivales/editar/${f.id}`} className="text-gray-400 hover:text-brand-fuchsia transition-colors p-1">
                       <Pencil size={18} />
                     </Link>
-                    <button onClick={() => handleEliminar(f.id, f.nombre)} className="text-red-400 hover:text-red-600 transition-colors p-1">
+                    <button onClick={() => { setABorrar({ ...f, resumen: r }); setNombreEscrito(""); }} className="text-red-400 hover:text-red-600 transition-colors p-1" title="Eliminar festival">
                       <Trash2 size={18} />
                     </button>
                   </div>
@@ -140,6 +146,60 @@ export default function FestivalesPage() {
           })
         )}
       </div>
+
+      {/* ---------- Eliminar festival ---------- */}
+      {aBorrar && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setABorrar(null)}>
+          <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <h3 className="font-black text-red-600 flex items-center gap-2"><AlertTriangle size={20} /> Eliminar festival</h3>
+              <button onClick={() => setABorrar(null)} className="p-1 text-gray-400 hover:text-brand-dark"><X size={22} /></button>
+            </div>
+
+            <div className="p-4 sm:p-5">
+              <p className="font-black text-brand-dark text-lg mb-1">{aBorrar.nombre}</p>
+              <p className="text-sm text-gray-500 mb-4">{formatearFecha(aBorrar.fecha)}</p>
+
+              {aBorrar.resumen.total > 0 ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 space-y-1 text-sm text-red-800">
+                  <p className="font-bold">Se va a borrar también:</p>
+                  <p>· {aBorrar.resumen.vendidas} entradas vendidas</p>
+                  {aBorrar.resumen.bloqueadas > 0 && <p>· {aBorrar.resumen.bloqueadas} butacas bloqueadas</p>}
+                  <p>· {pesos(aBorrar.resumen.cobrado)} de recaudación registrada</p>
+                  <p className="font-black pt-1">Esto no se puede deshacer.</p>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-600 mb-4">Este festival todavía no tiene ninguna entrada registrada.</p>
+              )}
+
+              {aBorrar.resumen.total > 0 ? (
+                <>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">
+                    Para confirmar, escribí el nombre del festival:
+                  </label>
+                  <input
+                    type="text" autoFocus value={nombreEscrito}
+                    onChange={e => setNombreEscrito(e.target.value)}
+                    placeholder={aBorrar.nombre}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-400 outline-none mb-4"
+                  />
+                  <button
+                    onClick={eliminar}
+                    disabled={borrando || nombreEscrito.trim() !== aBorrar.nombre.trim()}
+                    className="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                  >
+                    <Trash2 size={18} /> {borrando ? "Eliminando..." : "Eliminar festival y todas sus entradas"}
+                  </button>
+                </>
+              ) : (
+                <button onClick={eliminar} disabled={borrando} className="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 flex items-center justify-center gap-2">
+                  <Trash2 size={18} /> {borrando ? "Eliminando..." : "Eliminar festival"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

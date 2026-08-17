@@ -33,13 +33,38 @@ select 'No se puede borrar una alumna con entradas',
             ) then 'OK' else 'FALTA - la clave foranea no quedo en RESTRICT' end
 
 union all
-select 'No se puede borrar un festival con entradas',
+select 'Borrar un festival borra sus entradas',
        case when exists (
               select 1 from pg_constraint
               where conrelid = to_regclass('public.festival_entradas')
                 and confrelid = to_regclass('public.festivales')
-                and contype = 'f' and confdeltype = 'r'
-            ) then 'OK' else 'FALTA - la clave foranea no quedo en RESTRICT' end
+                and contype = 'f' and confdeltype = 'c'
+            ) then 'OK' else 'FALTA - correr SUPABASE_FESTIVALES_PAGOS_Y_BORRADO.sql' end
+
+union all
+select 'Pago parcial (columna monto_pagado)',
+       case when exists (
+              select 1 from pg_attribute
+              where attrelid = to_regclass('public.festival_entradas')
+                and attname = 'monto_pagado' and attnum > 0 and not attisdropped
+            ) then 'OK' else 'FALTA - correr SUPABASE_FESTIVALES_PAGOS_Y_BORRADO.sql' end
+
+union all
+select 'pagado lo calcula la base sola',
+       case when exists (
+              select 1 from pg_attribute
+              where attrelid = to_regclass('public.festival_entradas')
+                and attname = 'pagado' and attnum > 0 and not attisdropped
+                and attgenerated = 's'
+            ) then 'OK' else 'FALTA - correr SUPABASE_FESTIVALES_PAGOS_Y_BORRADO.sql' end
+
+union all
+select 'No se puede cobrar mas que el precio',
+       case when exists (
+              select 1 from pg_constraint
+              where conrelid = to_regclass('public.festival_entradas')
+                and conname = 'festival_entradas_monto_ck'
+            ) then 'OK' else 'FALTA' end
 
 union all
 select 'Solo se aceptan estados validos',
@@ -72,6 +97,6 @@ select 'Columnas de festival_entradas',
               select count(*) from information_schema.columns
               where table_schema = 'public' and table_name = 'festival_entradas'
                 and column_name in ('id','festival_id','fila','butaca','sector','estado',
-                                    'alumna_id','pagado','precio','observacion','motivo',
-                                    'venta_id','created_at')
-            ) = 13 then 'OK' else 'FALTA alguna columna' end;
+                                    'alumna_id','pagado','monto_pagado','precio',
+                                    'observacion','motivo','venta_id','created_at')
+            ) = 14 then 'OK' else 'FALTA alguna columna' end;
