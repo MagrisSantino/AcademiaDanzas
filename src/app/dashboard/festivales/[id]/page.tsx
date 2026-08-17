@@ -470,11 +470,27 @@ export default function FestivalPage() {
                         </p>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           {v.items.map(i => (
-                            <span key={i.id} className={`text-xs font-bold px-2 py-1 rounded-md border flex items-center gap-1 ${i.estado === "anulada" ? "bg-gray-100 text-gray-400 border-gray-200 line-through" : i.pagado ? "bg-green-50 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
-                              <Armchair size={12} /> {i.fila} · {i.butaca}
-                            </span>
+                            i.estado === "anulada" ? (
+                              <span key={i.id} className="text-xs font-bold px-2 py-1 rounded-md border flex items-center gap-1 bg-gray-100 text-gray-400 border-gray-200 line-through">
+                                <Armchair size={12} /> {i.fila} · {i.butaca}
+                              </span>
+                            ) : (
+                              // Cada butaca se puede tocar sola: si el cliente devuelve
+                              // una de las cuatro que compró, se anula solo esa.
+                              <button
+                                key={i.id}
+                                onClick={() => setDetalle(i)}
+                                title="Ver o devolver esta butaca"
+                                className={`text-xs font-bold px-2 py-1 rounded-md border flex items-center gap-1 transition-colors hover:border-brand-fuchsia hover:text-brand-fuchsia ${i.pagado ? "bg-green-50 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}
+                              >
+                                <Armchair size={12} /> {i.fila} · {i.butaca}
+                              </button>
+                            )
                           ))}
                         </div>
+                        {!v.sinVigentes && v.vigentes.length > 1 && (
+                          <p className="text-[11px] text-gray-400 mt-1.5">Tocá una butaca para devolverla sola, sin anular toda la venta.</p>
+                        )}
                         {v.observacion && <p className="text-sm text-gray-500 mt-2 italic">“{v.observacion}”</p>}
                         <p className="text-[11px] text-gray-400 mt-1">{new Date(v.fecha).toLocaleString("es-AR")}</p>
                       </div>
@@ -491,10 +507,14 @@ export default function FestivalPage() {
                               {v.todasPagadas ? "Marcar impaga" : "Marcar pagada"}
                             </button>
                             <button
-                              onClick={() => anular(v.vigentes.map(i => i.id), `¿Anular la venta de ${v.vigentes.length} butaca(s) de ${nombreDe(v.alumna_id)}?\n\nLas butacas quedan libres y la venta queda registrada como ANULADA.`)}
+                              onClick={() => anular(
+                                v.vigentes.map(i => i.id),
+                                `¿Anular la venta entera de ${v.vigentes.length} butaca(s) de ${nombreDe(v.alumna_id)}?\n\nLas butacas quedan libres y la venta queda registrada como ANULADA.` +
+                                (v.cobrado > 0 ? `\n\nOJO: ya se cobraron ${pesos(v.cobrado)}. Acordate de devolver esa plata.` : "")
+                              )}
                               className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
                             >
-                              Anular
+                              Anular todo
                             </button>
                           </div>
                         )}
@@ -710,8 +730,15 @@ export default function FestivalPage() {
                 <button onClick={() => cambiarPago([detalle.id], !detalle.pagado)} className={`w-full font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${detalle.pagado ? "border-2 border-gray-300 text-gray-700 hover:bg-gray-100" : "bg-green-600 text-white hover:bg-green-700"}`}>
                   <Check size={18} /> {detalle.pagado ? "Marcar como impaga" : "Marcar como pagada"}
                 </button>
-                <button onClick={() => anular([detalle.id], `¿Anular la butaca ${detalle.fila}-${detalle.butaca}?\n\nQueda libre para volver a venderla y el registro se guarda como ANULADA.`)} className="w-full border-2 border-red-200 text-red-500 font-bold py-3 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-2">
-                  <Ban size={18} /> Anular esta butaca
+                <button
+                  onClick={() => anular(
+                    [detalle.id],
+                    `¿Devolver la butaca ${detalle.fila}-${detalle.butaca}?\n\nQueda libre para volver a venderla y el registro se guarda como ANULADA.` +
+                    (detalle.pagado ? `\n\nOJO: esta butaca está PAGADA. Al anularla salen ${pesos(Number(detalle.precio || 0))} de la recaudación, así que acordate de devolver esa plata.` : "")
+                  )}
+                  className="w-full border-2 border-red-200 text-red-500 font-bold py-3 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Ban size={18} /> Devolver / anular esta butaca
                 </button>
               </div>
             </>
