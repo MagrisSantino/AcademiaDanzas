@@ -121,8 +121,15 @@ export const metricasMapa = (tam: number) => {
   };
 };
 
+/**
+ * Alto aproximado del dibujo completo (filas + palcos + escenario).
+ * Sirve para elegir el tamaño de butaca más grande que entre en la
+ * pantalla, a lo alto y a lo ancho, sin tener que dibujarlo antes.
+ */
+export const altoAproxMapa = (tam: number) => Math.round(60 + 16.5 * tam);
+
 export const TAM_MIN = 12;
-export const TAM_MAX = 34;
+export const TAM_MAX = 44;
 
 /** Cuantas butacas tiene el teatro en total (hoy: 249). */
 export const TOTAL_BUTACAS = TODAS_LAS_FILAS.reduce(

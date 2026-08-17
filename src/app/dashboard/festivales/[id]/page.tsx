@@ -7,10 +7,12 @@ import Papa from "papaparse";
 import {
   ArrowLeft, Ticket, Search, X, Printer, Download, Lock, Unlock, Pencil,
   Check, Ban, ZoomIn, ZoomOut, Calendar, MapPin, AlertTriangle, Armchair,
+  Maximize, Minimize,
 } from "lucide-react";
 import MapaTeatro from "@/components/MapaTeatro";
 import {
-  TOTAL_BUTACAS, claveButaca, sectorDeFila, compararButacas, metricasMapa, TAM_MIN, TAM_MAX,
+  TOTAL_BUTACAS, claveButaca, sectorDeFila, compararButacas, metricasMapa, altoAproxMapa,
+  TAM_MIN, TAM_MAX,
 } from "@/lib/teatro";
 
 const pesos = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
@@ -21,7 +23,7 @@ const formatearFecha = (fecha: string | null) => {
   return `${d}/${m}/${a}`;
 };
 
-type Tab = "vender" | "vendidas" | "recaudacion";
+type Tab = "vendidas" | "recaudacion";
 
 export default function FestivalPage() {
   const params = useParams();
@@ -32,7 +34,12 @@ export default function FestivalPage() {
   const [festival, setFestival] = useState<any>(null);
   const [entradas, setEntradas] = useState<any[]>([]);
   const [alumnas, setAlumnas] = useState<any[]>([]);
-  const [tab, setTab] = useState<Tab>("vender");
+  const [tab, setTab] = useState<Tab>("vendidas");
+
+  // El mapa se abre a pantalla completa: es la pantalla que más se usa
+  // y hay que poder leer los números de butaca de un vistazo.
+  const [vendiendo, setVendiendo] = useState(false);
+  const [pantallaCompleta, setPantallaCompleta] = useState(false);
 
   // Selección en el mapa
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
@@ -58,26 +65,65 @@ export default function FestivalPage() {
 
   useEffect(() => { fetchTodo(); }, [festivalId]);
 
-  // El mapa arranca del tamaño más grande que entre en pantalla.
-  // Si la usuaria toca el zoom, dejamos de auto-ajustar.
+  // El mapa arranca del tamaño más grande que entre en pantalla, a lo
+  // ancho Y a lo alto. Si la usuaria toca el zoom, dejamos de ajustar.
   useEffect(() => {
+    if (!vendiendo) return;
     const el = contenedorRef.current;
     if (!el) return;
     const ajustar = () => {
       if (zoomManual.current) return;
-      const disponible = el.clientWidth - 8;
-      if (disponible <= 0) return;
+      const anchoLibre = el.clientWidth - 16;
+      const altoLibre = el.clientHeight - 16;
+      if (anchoLibre <= 0 || altoLibre <= 0) return;
       let mejor = TAM_MIN;
       for (let t = TAM_MIN; t <= TAM_MAX; t++) {
-        if (metricasMapa(t).anchoTotal <= disponible) mejor = t;
+        if (metricasMapa(t).anchoTotal <= anchoLibre && altoAproxMapa(t) <= altoLibre) mejor = t;
       }
       setTam(mejor);
     };
     ajustar();
-    const ro = new ResizeObserver(ajustar);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [cargando]);
+    // Escuchamos la ventana y no el contenedor: si escucháramos el
+    // contenedor, la barra de abajo al aparecer cambiaría el alto y el
+    // mapa se movería solo mientras se eligen butacas.
+    window.addEventListener("resize", ajustar);
+    return () => window.removeEventListener("resize", ajustar);
+  }, [vendiendo, pantallaCompleta]);
+
+  // Salir del selector con Escape (sin cerrar si hay un modal abierto).
+  useEffect(() => {
+    if (!vendiendo) return;
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (modal || detalle) return;
+      cerrarVenta();
+    };
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, [vendiendo, modal, detalle]);
+
+  useEffect(() => {
+    const alCambiar = () => setPantallaCompleta(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", alCambiar);
+    return () => document.removeEventListener("fullscreenchange", alCambiar);
+  }, []);
+
+  const abrirVenta = () => {
+    zoomManual.current = false;
+    setVendiendo(true);
+  };
+
+  const cerrarVenta = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    setSeleccionadas(new Set());
+    setVendiendo(false);
+  };
+
+  /** Pantalla completa real del navegador: se va hasta la barra de pestañas. */
+  const alternarPantallaCompleta = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => {});
+  };
 
   const fetchTodo = async () => {
     setCargando(true);
@@ -340,7 +386,6 @@ export default function FestivalPage() {
   if (cargando) return <p className="text-gray-400">Cargando festival...</p>;
 
   const tabs: { id: Tab; texto: string }[] = [
-    { id: "vender", texto: "Vender entradas" },
     { id: "vendidas", texto: "Entradas vendidas" },
     { id: "recaudacion", texto: "Recaudación" },
   ];
@@ -348,23 +393,33 @@ export default function FestivalPage() {
   return (
     <div className="space-y-6">
       {/* ---------- Encabezado ---------- */}
-      <div className="print:hidden">
-        <div className="flex items-center gap-3 flex-wrap">
-          <Link href="/dashboard/festivales" className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-            <ArrowLeft size={24} className="text-gray-600" />
-          </Link>
-          <h1 className="text-2xl sm:text-3xl font-black text-brand-dark flex items-center gap-3">
-            <Ticket className="text-brand-fuchsia" size={30} /> {festival.nombre}
-          </h1>
-          <Link href={`/dashboard/festivales/editar/${festivalId}`} className="text-gray-400 hover:text-brand-fuchsia p-1" title="Editar festival">
-            <Pencil size={18} />
-          </Link>
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 print:hidden">
+        <div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Link href="/dashboard/festivales" className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+              <ArrowLeft size={24} className="text-gray-600" />
+            </Link>
+            <h1 className="text-2xl sm:text-3xl font-black text-brand-dark flex items-center gap-3">
+              <Ticket className="text-brand-fuchsia" size={30} /> {festival.nombre}
+            </h1>
+            <Link href={`/dashboard/festivales/editar/${festivalId}`} className="text-gray-400 hover:text-brand-fuchsia p-1" title="Editar festival">
+              <Pencil size={18} />
+            </Link>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-gray-600 font-medium mt-2 ml-1">
+            <span className="flex items-center gap-1.5"><Calendar size={14} className="text-brand-fuchsia" /> {formatearFecha(festival.fecha)}</span>
+            {festival.lugar && <span className="flex items-center gap-1.5"><MapPin size={14} className="text-brand-fuchsia" /> {festival.lugar}</span>}
+            <span className="flex items-center gap-1.5"><Ticket size={14} className="text-brand-fuchsia" /> Entrada {pesos(precioActual)}</span>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-gray-600 font-medium mt-2 ml-1">
-          <span className="flex items-center gap-1.5"><Calendar size={14} className="text-brand-fuchsia" /> {formatearFecha(festival.fecha)}</span>
-          {festival.lugar && <span className="flex items-center gap-1.5"><MapPin size={14} className="text-brand-fuchsia" /> {festival.lugar}</span>}
-          <span className="flex items-center gap-1.5"><Ticket size={14} className="text-brand-fuchsia" /> Entrada {pesos(precioActual)}</span>
-        </div>
+
+        <button
+          onClick={abrirVenta}
+          className="bg-brand-fuchsia text-white px-6 py-4 rounded-xl font-black text-lg flex items-center justify-center gap-3 shadow-lg hover:scale-105 transition-transform shrink-0 w-full lg:w-auto"
+        >
+          <Armchair size={26} /> Vender entradas
+          <span className="font-bold text-sm opacity-80 bg-black/15 px-2 py-1 rounded-lg">{resumen.libres} libres</span>
+        </button>
       </div>
 
       {/* ---------- Pestañas ---------- */}
@@ -382,51 +437,7 @@ export default function FestivalPage() {
         ))}
       </div>
 
-      <div ref={contenedorRef}>
-        {/* ================= VENDER ENTRADAS ================= */}
-        {tab === "vender" && (
-          <div className="space-y-4">
-            {/* Referencias + zoom */}
-            <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-              <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-gray-600">
-                <span className="flex items-center gap-1.5"><i className="w-4 h-4 rounded-t-md rounded-b-[2px] border-2 bg-white border-gray-300 inline-block" /> Libre</span>
-                <span className="flex items-center gap-1.5"><i className="w-4 h-4 rounded-t-md rounded-b-[2px] border-2 bg-green-500 border-green-700 inline-block" /> Seleccionada</span>
-                <span className="flex items-center gap-1.5"><i className="w-4 h-4 rounded-t-md rounded-b-[2px] border-2 bg-gray-700 border-gray-800 inline-block" /> Ocupada</span>
-                <span className="text-gray-400 font-medium">{resumen.libres} libres de {TOTAL_BUTACAS}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => { zoomManual.current = true; setTam(t => Math.max(TAM_MIN, t - 2)); }} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100" title="Achicar"><ZoomOut size={16} /></button>
-                <button onClick={() => { zoomManual.current = true; setTam(t => Math.min(TAM_MAX, t + 2)); }} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100" title="Agrandar"><ZoomIn size={16} /></button>
-                <button onClick={() => window.print()} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm font-bold" title="Imprimir mapa">
-                  <Printer size={16} /> <span className="hidden sm:inline">Imprimir mapa</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Título solo para el papel */}
-            <div className="hidden print:block mb-3">
-              <p className="text-lg font-black">{festival.nombre}</p>
-              <p className="text-xs">{formatearFecha(festival.fecha)}{festival.lugar ? ` · ${festival.lugar}` : ""} · {resumen.vendidas + resumen.bloqueadas} de {TOTAL_BUTACAS} butacas ocupadas</p>
-            </div>
-
-            <div className="bg-white border border-brand-pink rounded-xl p-3 sm:p-5 overflow-x-auto print:border-0 print:p-0">
-              <div className="flex justify-center min-w-min">
-                <MapaTeatro
-                  ocupadas={ocupadas}
-                  seleccionadas={seleccionadas}
-                  onButaca={clickButaca}
-                  tam={tam}
-                  tituloOcupada={(e) =>
-                    e.estado === "bloqueada"
-                      ? `${e.fila} · Butaca ${e.butaca} · Bloqueada${e.motivo ? ` (${e.motivo})` : ""}`
-                      : `${e.fila} · Butaca ${e.butaca} · ${nombreDe(e.alumna_id)} · ${e.pagado ? "Pagada" : "IMPAGA"}`
-                  }
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
+      <div>
         {/* ================= ENTRADAS VENDIDAS ================= */}
         {tab === "vendidas" && (
           <div className="space-y-4">
@@ -617,23 +628,84 @@ export default function FestivalPage() {
         )}
       </div>
 
-      {/* ---------- Barra de selección ---------- */}
-      {tab === "vender" && seleccionadas.size > 0 && (
-        <div className="sticky bottom-0 -mx-4 md:-mx-6 lg:-mx-10 px-4 md:px-6 lg:px-10 py-3 bg-white border-t-2 border-brand-fuchsia shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-20 print:hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-black text-brand-dark">
-                {seleccionadas.size} butaca{seleccionadas.size > 1 ? "s" : ""} · <span className="text-brand-fuchsia">{pesos(totalSeleccion)}</span>
-              </p>
-              <p className="text-xs text-gray-500 truncate max-w-[60vw]">
-                {listaSeleccion.map(b => `${b.fila}-${b.butaca}`).join(", ")}
-              </p>
+      {/* ================= SELECTOR DE BUTACAS A PANTALLA COMPLETA ================= */}
+      {vendiendo && (
+        <div className="fixed inset-0 z-40 bg-white flex flex-col print:static print:h-auto print:block">
+          {/* Barra de arriba */}
+          <div className="shrink-0 border-b border-gray-200 px-2 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 print:hidden">
+            <div className="flex items-center gap-2 min-w-0">
+              <button onClick={cerrarVenta} className="px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 font-bold text-sm text-gray-600">
+                <X size={20} /> Salir
+              </button>
+              <p className="font-black text-brand-dark truncate hidden md:block">{festival.nombre}</p>
+              <span className="text-sm font-bold text-brand-fuchsia bg-brand-pink/40 px-2.5 py-1 rounded-lg whitespace-nowrap">{resumen.libres} libres</span>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <button onClick={() => setSeleccionadas(new Set())} className="px-3 py-2 rounded-lg border border-gray-300 text-gray-600 font-bold text-sm hover:bg-gray-100">Limpiar</button>
-              <button onClick={() => setModal("bloqueo")} className="px-3 py-2 rounded-lg border border-gray-400 text-gray-700 font-bold text-sm hover:bg-gray-100 flex items-center gap-2"><Lock size={16} /> Bloquear</button>
-              <button onClick={() => setModal("venta")} className="px-4 py-2 rounded-lg bg-brand-fuchsia text-white font-bold text-sm hover:scale-105 transition-transform flex items-center gap-2"><Ticket size={16} /> Vender</button>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div className="hidden sm:flex items-center gap-3 text-xs font-bold text-gray-600">
+                <span className="flex items-center gap-1.5"><i className="w-4 h-4 rounded-t-md rounded-b-[2px] border-2 bg-white border-gray-300 inline-block" /> Libre</span>
+                <span className="flex items-center gap-1.5"><i className="w-4 h-4 rounded-t-md rounded-b-[2px] border-2 bg-green-500 border-green-700 inline-block" /> Elegida</span>
+                <span className="flex items-center gap-1.5"><i className="w-4 h-4 rounded-t-md rounded-b-[2px] border-2 bg-gray-700 border-gray-800 inline-block" /> Ocupada</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { zoomManual.current = true; setTam(t => Math.max(TAM_MIN, t - 2)); }} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100" title="Achicar butacas"><ZoomOut size={18} /></button>
+                <button onClick={() => { zoomManual.current = true; setTam(t => Math.min(TAM_MAX, t + 2)); }} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100" title="Agrandar butacas"><ZoomIn size={18} /></button>
+                <button onClick={alternarPantallaCompleta} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100" title={pantallaCompleta ? "Salir de pantalla completa" : "Pantalla completa"}>
+                  {pantallaCompleta ? <Minimize size={18} /> : <Maximize size={18} />}
+                </button>
+                <button onClick={() => window.print()} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100" title="Imprimir mapa"><Printer size={18} /></button>
+              </div>
             </div>
+          </div>
+
+          {/* Título solo para el papel */}
+          <div className="hidden print:block mb-3">
+            <p className="text-lg font-black">{festival.nombre}</p>
+            <p className="text-xs">{formatearFecha(festival.fecha)}{festival.lugar ? ` · ${festival.lugar}` : ""} · {resumen.vendidas + resumen.bloqueadas} de {TOTAL_BUTACAS} butacas ocupadas</p>
+          </div>
+
+          {/* Mapa: se lleva todo el alto que sobra */}
+          <div ref={contenedorRef} className="flex-1 overflow-auto flex print:overflow-visible print:block">
+            {/* m-auto y no justify-center: con justify-center, al hacer zoom
+                el borde izquierdo del mapa queda inalcanzable al scrollear. */}
+            <div className="m-auto p-2">
+              <MapaTeatro
+                ocupadas={ocupadas}
+                seleccionadas={seleccionadas}
+                onButaca={clickButaca}
+                tam={tam}
+                tituloOcupada={(e) =>
+                  e.estado === "bloqueada"
+                    ? `${e.fila} · Butaca ${e.butaca} · Bloqueada${e.motivo ? ` (${e.motivo})` : ""}`
+                    : `${e.fila} · Butaca ${e.butaca} · ${nombreDe(e.alumna_id)} · ${e.pagado ? "Pagada" : "IMPAGA"}`
+                }
+              />
+            </div>
+          </div>
+
+          {/* Barra de abajo: siempre visible para que el mapa no cambie de tamaño */}
+          <div className="shrink-0 min-h-[76px] border-t-2 border-brand-fuchsia px-3 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3 bg-white print:hidden">
+            {seleccionadas.size === 0 ? (
+              <p className="text-sm text-gray-500">
+                Tocá las butacas libres para elegirlas. Tocá una ocupada para ver de quién es.
+              </p>
+            ) : (
+              <>
+                <div className="min-w-0">
+                  <p className="font-black text-brand-dark text-lg">
+                    {seleccionadas.size} butaca{seleccionadas.size > 1 ? "s" : ""} · <span className="text-brand-fuchsia">{pesos(totalSeleccion)}</span>
+                  </p>
+                  <p className="text-xs text-gray-500 truncate max-w-[55vw]">
+                    {listaSeleccion.map(b => `${b.fila}-${b.butaca}`).join(", ")}
+                  </p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => setSeleccionadas(new Set())} className="px-3 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-bold text-sm hover:bg-gray-100">Limpiar</button>
+                  <button onClick={() => setModal("bloqueo")} className="px-3 py-2.5 rounded-lg border border-gray-400 text-gray-700 font-bold text-sm hover:bg-gray-100 flex items-center gap-2"><Lock size={16} /> Bloquear</button>
+                  <button onClick={() => setModal("venta")} className="px-6 py-2.5 rounded-lg bg-brand-fuchsia text-white font-black text-base hover:scale-105 transition-transform flex items-center gap-2"><Ticket size={18} /> Vender</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
